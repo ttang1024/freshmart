@@ -1,4 +1,6 @@
-# Next_Flask_PostgreSQL
+# E-commerce Project Setup Guide
+
+## Woolworths-Style Online Grocery Store
 
 This is a full-stack e-commerce application inspired by Woolworths, built with Next.js, Flask, and PostgreSQL.
 
@@ -24,33 +26,14 @@ This is a full-stack e-commerce application inspired by Woolworths, built with N
 
 ### 1. Database Setup (PostgreSQL)
 
-#### For macOS:
-
 ```bash
-# Install PostgreSQL with Homebrew
-brew install postgresql@14
-brew services start postgresql@14
-
-# Add PostgreSQL to PATH (add to ~/.zshrc or ~/.bash_profile)
-echo 'export PATH="/opt/homebrew/opt/postgresql@14/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# Create database and user
-psql postgres
-
-# In PostgreSQL shell:
-CREATE DATABASE ecommerce_db;
-CREATE USER ecommerce_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE ecommerce_db TO ecommerce_user;
-\q
-```
-
-#### For Ubuntu/Debian Linux:
-
-```bash
-# Install PostgreSQL
+# Install PostgreSQL (Ubuntu/Debian)
 sudo apt-get update
 sudo apt-get install postgresql postgresql-contrib
+
+# macOS with Homebrew
+brew install postgresql@14
+brew services start postgresql@14
 
 # Create database and user
 sudo -u postgres psql
@@ -62,26 +45,9 @@ GRANT ALL PRIVILEGES ON DATABASE ecommerce_db TO ecommerce_user;
 \q
 ```
 
-#### For Windows:
-
 ```bash
-# Download and install PostgreSQL from https://www.postgresql.org/download/windows/
-# During installation, remember the password you set for the postgres user
-
-# Open SQL Shell (psql) from Start Menu
-# Press Enter for default values, then enter your postgres password
-
-# In PostgreSQL shell:
-CREATE DATABASE ecommerce_db;
-CREATE USER ecommerce_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE ecommerce_db TO ecommerce_user;
-\q
-```
-
-```bash
-# Run the schema file (all platforms)
-psql -U ecommerce_user -d ecommerce_db -h localhost -f schema.sql
-# Enter the password when prompted
+# Run the schema file
+psql -U ecommerce_user -d ecommerce_db -f schema.sql
 ```
 
 ### 2. Backend Setup (Flask)
@@ -97,30 +63,17 @@ cd backend
 
 # Create virtual environment
 python3 -m venv venv
-
-# Activate virtual environment
-# macOS/Linux:
-source venv/bin/activate
-# Windows:
-# venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install flask flask-cors flask-sqlalchemy psycopg2-binary python-dotenv
 
 # Create .env file
-# macOS/Linux:
 cat > .env << EOF
 DATABASE_URL=postgresql://ecommerce_user:your_secure_password@localhost:5432/ecommerce_db
 SECRET_KEY=your-secret-key-here-change-in-production
 FLASK_ENV=development
 EOF
-
-# Windows (PowerShell):
-# @"
-# DATABASE_URL=postgresql://ecommerce_user:your_secure_password@localhost:5432/ecommerce_db
-# SECRET_KEY=your-secret-key-here-change-in-production
-# FLASK_ENV=development
-# "@ | Out-File -FilePath .env -Encoding utf8
 
 # Save the Flask app as app.py (use the code provided above)
 
@@ -131,7 +84,7 @@ flask init-db
 python app.py
 ```
 
-The API will be available at `http://localhost:6000`
+The API will be available at `http://localhost:5000`
 
 ### 3. Frontend Setup (Next.js)
 
@@ -148,15 +101,9 @@ cd frontend
 npm install lucide-react
 
 # Create .env.local file
-# macOS/Linux:
 cat > .env.local << EOF
-NEXT_PUBLIC_API_URL=http://localhost:6000/api
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
 EOF
-
-# Windows (PowerShell):
-# @"
-# NEXT_PUBLIC_API_URL=http://localhost:6000/api
-# "@ | Out-File -FilePath .env.local -Encoding utf8
 
 # Replace app/page.tsx with the React component code provided above
 
@@ -257,7 +204,7 @@ Update the Next.js component to connect to the real API:
 
 ```typescript
 // In your Next.js page.tsx
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:6000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
 useEffect(() => {
 	// Fetch real products from API
@@ -274,19 +221,19 @@ useEffect(() => {
 
 ```bash
 # Test health endpoint
-curl http://localhost:6000/api/health
+curl http://localhost:5000/api/health
 
 # Get all products
-curl http://localhost:6000/api/products
+curl http://localhost:5000/api/products
 
 # Get products by category
-curl http://localhost:6000/api/products?category=fruit-veg
+curl http://localhost:5000/api/products?category=fruit-veg
 
 # Search products
-curl http://localhost:6000/api/products?search=banana
+curl http://localhost:5000/api/products?search=banana
 
 # Create a new product (POST with JSON)
-curl -X POST http://localhost:6000/api/products \
+curl -X POST http://localhost:5000/api/products \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Product",
@@ -304,7 +251,7 @@ curl -X POST http://localhost:6000/api/products \
 ### Backend (Flask)
 
 1. Use Gunicorn as WSGI server: `pip install gunicorn`
-2. Run with: `gunicorn -w 4 -b 0.0.0.0:6000 app:app`
+2. Run with: `gunicorn -w 4 -b 0.0.0.0:5000 app:app`
 3. Deploy to: Heroku, AWS, DigitalOcean, or Railway
 
 ### Frontend (Next.js)
@@ -351,37 +298,11 @@ curl -X POST http://localhost:6000/api/products \
 
 ### Database Connection Issues
 
-**macOS:**
-
-```bash
-# Check PostgreSQL is running
-brew services list | grep postgresql
-
-# Restart if needed
-brew services restart postgresql@14
-
-# Check connection
-psql -U ecommerce_user -d ecommerce_db -h localhost
-```
-
-**Linux:**
-
 ```bash
 # Check PostgreSQL is running
 sudo systemctl status postgresql
 
-# Restart if needed
-sudo systemctl restart postgresql
-
 # Check connection
-psql -U ecommerce_user -d ecommerce_db -h localhost
-```
-
-**Windows:**
-
-```bash
-# Check if PostgreSQL service is running in Services app
-# Or use SQL Shell (psql) to connect:
 psql -U ecommerce_user -d ecommerce_db -h localhost
 ```
 
@@ -391,44 +312,12 @@ Ensure Flask-CORS is properly configured in `app.py`
 
 ### Port Already in Use
 
-**macOS/Linux:**
-
 ```bash
-# Find and kill process on port 6000
-lsof -ti:6000 | xargs kill -9
+# Find and kill process on port 5000
+lsof -ti:5000 | xargs kill -9
 
 # Or change port in Flask app
 app.run(port=5001)
-```
-
-**Windows (PowerShell):**
-
-```powershell
-# Find process using port 6000
-netstat -ano | findstr :6000
-
-# Kill process (replace PID with actual process ID)
-taskkill /PID <PID> /F
-
-# Or change port in Flask app
-app.run(port=5001)
-```
-
-### Python Virtual Environment Issues
-
-**If `python3` command not found on Windows:**
-
--   Use `python` instead of `python3`
--   Or use `py -3` to explicitly use Python 3
-
-**If pip install fails:**
-
-```bash
-# Upgrade pip first
-python -m pip install --upgrade pip
-
-# Then retry installations
-pip install flask flask-cors flask-sqlalchemy psycopg2-binary python-dotenv
 ```
 
 ---
