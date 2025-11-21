@@ -1,47 +1,82 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, User, Menu, Heart, ChevronRight, Star, Plus, Minus } from 'lucide-react';
+import { productsAPI, categoriesAPI } from '@/lib/api';
 
-export default function EcommerceApp() {
-  const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
+interface Product {
+  id: number;
+  name: string;
+  category: string;
+  category_id: number;
+  price: number;
+  unit: string;
+  image_url: string;
+  rating: number;
+  stock: number;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export default function HomePage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [cart, setCart] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showCart, setShowCart] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const categories = [
-    { id: 'all', name: 'All Products' },
-    { id: 'fruit-veg', name: 'Fruit & Veg' },
-    { id: 'meat-seafood', name: 'Meat & Seafood' },
-    { id: 'bakery', name: 'Bakery' },
-    { id: 'dairy', name: 'Dairy & Eggs' },
-    { id: 'pantry', name: 'Pantry' }
-  ];
-
-  // Mock products data
+  // Fetch categories
   useEffect(() => {
-    const mockProducts = [
-      { id: 1, name: 'Fresh Bananas', category: 'fruit-veg', price: 3.99, unit: 'kg', image: '🍌', rating: 4.5, stock: 50 },
-      { id: 2, name: 'Organic Tomatoes', category: 'fruit-veg', price: 5.99, unit: 'kg', image: '🍅', rating: 4.7, stock: 30 },
-      { id: 3, name: 'Chicken Breast', category: 'meat-seafood', price: 12.99, unit: 'kg', image: '🍗', rating: 4.6, stock: 25 },
-      { id: 4, name: 'Fresh Salmon', category: 'meat-seafood', price: 24.99, unit: 'kg', image: '🐟', rating: 4.8, stock: 15 },
-      { id: 5, name: 'Sourdough Bread', category: 'bakery', price: 4.50, unit: 'each', image: '🍞', rating: 4.9, stock: 20 },
-      { id: 6, name: 'Croissants 6pk', category: 'bakery', price: 6.99, unit: 'pack', image: '🥐', rating: 4.4, stock: 18 },
-      { id: 7, name: 'Full Cream Milk 2L', category: 'dairy', price: 3.80, unit: 'each', image: '🥛', rating: 4.5, stock: 40 },
-      { id: 8, name: 'Greek Yogurt 1kg', category: 'dairy', price: 7.99, unit: 'each', image: '🥛', rating: 4.6, stock: 22 },
-      { id: 9, name: 'Pasta 500g', category: 'pantry', price: 2.50, unit: 'pack', image: '🍝', rating: 4.3, stock: 60 },
-      { id: 10, name: 'Olive Oil 1L', category: 'pantry', price: 12.99, unit: 'bottle', image: '🫒', rating: 4.7, stock: 35 }
-    ];
-    setProducts(mockProducts);
+    const fetchCategories = async () => {
+      try {
+        const data = await categoriesAPI.getAll();
+        setCategories([{ id: 0, name: 'All Products', slug: 'all' }, ...data]);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    };
+    fetchCategories();
   }, []);
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  // Fetch products
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params: any = {};
+        if (selectedCategory !== 'all') {
+          params.category = selectedCategory;
+        }
+        if (searchQuery) {
+          params.search = searchQuery;
+        }
 
-  const addToCart = (product) => {
+        const data = await productsAPI.getAll(params);
+        setProducts(data);
+      } catch (err: any) {
+        setError(err.message);
+        console.error('Error fetching products:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(() => {
+      fetchProducts();
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [selectedCategory, searchQuery]);
+
+  const addToCart = (product: Product) => {
     const existing = cart.find(item => item.id === product.id);
     if (existing) {
       setCart(cart.map(item =>
@@ -52,7 +87,7 @@ export default function EcommerceApp() {
     }
   };
 
-  const updateQuantity = (id, delta) => {
+  const updateQuantity = (id: number, delta: number) => {
     setCart(cart.map(item => {
       if (item.id === id) {
         const newQty = Math.max(0, item.quantity + delta);
@@ -109,8 +144,8 @@ export default function EcommerceApp() {
               {categories.map(cat => (
                 <button
                   key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`whitespace-nowrap px-3 py-1 rounded-full transition-colors ${selectedCategory === cat.id
+                  onClick={() => setSelectedCategory(cat.id === 0 ? 'all' : cat.id.toString())}
+                  className={`whitespace-nowrap px-3 py-1 rounded-full transition-colors ${(selectedCategory === 'all' && cat.id === 0) || selectedCategory === cat.id.toString()
                     ? 'bg-white text-green-600 font-semibold'
                     : 'hover:bg-green-500'
                     }`}
@@ -134,49 +169,79 @@ export default function EcommerceApp() {
           </button>
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+            <p className="text-gray-600 mt-4">Loading products...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <p className="text-red-700">Error loading products: {error}</p>
+            <p className="text-sm text-red-600 mt-2">Make sure the Flask backend is running on http://localhost:5000</p>
+          </div>
+        )}
+
         {/* Products Grid */}
-        <div className="mb-6">
-          <h3 className="text-2xl font-bold text-gray-800 mb-4">
-            {selectedCategory === 'all' ? 'All Products' : categories.find(c => c.id === selectedCategory)?.name}
-          </h3>
-          <p className="text-gray-600">{filteredProducts.length} products found</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {filteredProducts.map(product => (
-            <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow overflow-hidden">
-              <div className="relative">
-                <div className="aspect-square flex items-center justify-center bg-gray-100 text-8xl">
-                  {product.image}
-                </div>
-                <button className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100">
-                  <Heart className="w-5 h-5 text-gray-600" />
-                </button>
-              </div>
-
-              <div className="p-4">
-                <h4 className="font-semibold text-gray-800 mb-1">{product.name}</h4>
-                <div className="flex items-center gap-1 mb-2">
-                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="text-sm text-gray-600">{product.rating}</span>
-                </div>
-
-                <div className="flex items-baseline gap-1 mb-3">
-                  <span className="text-2xl font-bold text-green-600">${product.price}</span>
-                  <span className="text-sm text-gray-500">/ {product.unit}</span>
-                </div>
-
-                <button
-                  onClick={() => addToCart(product)}
-                  className="w-full bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add to Cart
-                </button>
-              </div>
+        {!loading && !error && (
+          <>
+            <div className="mb-6">
+              <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                {selectedCategory === 'all' ? 'All Products' : categories.find(c => c.id.toString() === selectedCategory)?.name}
+              </h3>
+              <p className="text-gray-600">{products.length} products found</p>
             </div>
-          ))}
-        </div>
+
+            {products.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-lg">No products found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {products.map(product => (
+                  <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow overflow-hidden">
+                    <div className="relative">
+                      <div className="aspect-square flex items-center justify-center bg-gray-100 text-8xl">
+                        {product.image_url}
+                      </div>
+                      <button className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100">
+                        <Heart className="w-5 h-5 text-gray-600" />
+                      </button>
+                    </div>
+
+                    <div className="p-4">
+                      <h4 className="font-semibold text-gray-800 mb-1">{product.name}</h4>
+                      <div className="flex items-center gap-1 mb-2">
+                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        <span className="text-sm text-gray-600">{product.rating}</span>
+                      </div>
+
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-2xl font-bold text-green-600">${product.price.toFixed(2)}</span>
+                        <span className="text-sm text-gray-500">/ {product.unit}</span>
+                      </div>
+
+                      <button
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock === 0}
+                        className={`w-full py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${product.stock === 0
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}
+                      >
+                        <Plus className="w-4 h-4" />
+                        {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </main>
 
       {/* Shopping Cart Sidebar */}
@@ -204,7 +269,7 @@ export default function EcommerceApp() {
                   <div className="space-y-4 mb-6">
                     {cart.map(item => (
                       <div key={item.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                        <div className="text-4xl">{item.image}</div>
+                        <div className="text-4xl">{item.image_url}</div>
                         <div className="flex-1">
                           <h4 className="font-semibold text-gray-800">{item.name}</h4>
                           <p className="text-sm text-gray-600">${item.price} / {item.unit}</p>

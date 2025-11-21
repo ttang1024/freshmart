@@ -1,34 +1,14 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Search, X, Save, Package, DollarSign, Tag, Layers, AlertCircle, CheckCircle } from 'lucide-react';
-
-// Types for products and categories to avoid `never` inference from useState([])
-type Category = {
-  id: number;
-  name: string;
-  slug?: string;
-};
-
-type Product = {
-  id: number;
-  name: string;
-  description?: string;
-  price: number;
-  unit: string;
-  stock: number;
-  category: string;
-  category_id: number;
-  image_url?: string;
-  rating: number;
-};
+import * as api from './api';
 
 export default function AdminProductManagement() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<api.Product[]>([]);
+  const [categories, setCategories] = useState<api.Category[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  // selectedCategory stores the select value (string) or 'all'
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showModal, setShowModal] = useState<boolean>(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<api.Product | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [formData, setFormData] = useState<{
@@ -51,31 +31,24 @@ export default function AdminProductManagement() {
     rating: '0'
   });
 
-  // Mock categories data
+  // Load categories and products from backend (fallback to mock data if API fails)
   useEffect(() => {
-    const mockCategories = [
-      { id: 1, name: 'Fruit & Veg', slug: 'fruit-veg' },
-      { id: 2, name: 'Meat & Seafood', slug: 'meat-seafood' },
-      { id: 3, name: 'Bakery', slug: 'bakery' },
-      { id: 4, name: 'Dairy & Eggs', slug: 'dairy' },
-      { id: 5, name: 'Pantry', slug: 'pantry' },
-      { id: 6, name: 'Beverages', slug: 'beverages' },
-      { id: 7, name: 'Frozen', slug: 'frozen' }
-    ];
-    setCategories(mockCategories);
+    let mounted = true;
 
-    // Mock products data
-    const mockProducts = [
-      { id: 1, name: 'Fresh Bananas', category: 'Fruit & Veg', category_id: 1, price: 3.99, unit: 'kg', stock: 50, image_url: '🍌', rating: 4.5 },
-      { id: 2, name: 'Organic Tomatoes', category: 'Fruit & Veg', category_id: 1, price: 5.99, unit: 'kg', stock: 30, image_url: '🍅', rating: 4.7 },
-      { id: 3, name: 'Chicken Breast', category: 'Meat & Seafood', category_id: 2, price: 12.99, unit: 'kg', stock: 25, image_url: '🍗', rating: 4.6 },
-      { id: 4, name: 'Fresh Salmon', category: 'Meat & Seafood', category_id: 2, price: 24.99, unit: 'kg', stock: 15, image_url: '🐟', rating: 4.8 },
-      { id: 5, name: 'Sourdough Bread', category: 'Bakery', category_id: 3, price: 4.50, unit: 'each', stock: 20, image_url: '🍞', rating: 4.9 },
-      { id: 6, name: 'Greek Yogurt 1kg', category: 'Dairy & Eggs', category_id: 4, price: 7.99, unit: 'each', stock: 22, image_url: '🥛', rating: 4.6 },
-      { id: 7, name: 'Pasta 500g', category: 'Pantry', category_id: 5, price: 2.50, unit: 'pack', stock: 60, image_url: '🍝', rating: 4.3 },
-      { id: 8, name: 'Orange Juice 2L', category: 'Beverages', category_id: 6, price: 5.99, unit: 'bottle', stock: 35, image_url: '🧃', rating: 4.4 }
-    ];
-    setProducts(mockProducts);
+    const load = async () => {
+      try {
+        const [cats, prods] = await Promise.all([api.getCategories(), api.getProducts()]);
+        if (!mounted) return;
+        setCategories(cats as any);
+        setProducts(prods as any);
+        console.log('prods', prods);
+      } catch (err) {
+        console.error('Failed', err);
+      }
+    };
+
+    load();
+    return () => { mounted = false; };
   }, []);
 
   const filteredProducts = products.filter(p => {
@@ -86,21 +59,21 @@ export default function AdminProductManagement() {
 
   const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3001);
+    setTimeout(() => setNotification(null), 3000);
   };
 
-  const handleOpenModal = (product: Product | null = null) => {
+  const handleOpenModal = (product: api.Product | null = null) => {
     if (product) {
       setEditingProduct(product);
       setFormData({
         name: product.name,
         description: product.description || '',
-        price: product.price.toString(),
+        price: String(product.price ?? ''),
         unit: product.unit,
-        stock: product.stock.toString(),
-        category_id: product.category_id.toString(),
+        stock: String(product.stock ?? ''),
+        category_id: String(product.category_id ?? ''),
         image_url: product.image_url || '',
-        rating: product.rating?.toString() || '0'
+        rating: String(product.rating ?? '0')
       });
     } else {
       setEditingProduct(null);
@@ -133,52 +106,53 @@ export default function AdminProductManagement() {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    console.log('Submitting', formData);
     if (!formData.name || !formData.price || !formData.stock || !formData.category_id) {
       showNotification('Please fill in all required fields', 'error');
       return;
     }
 
-    const category = categories.find(c => c.id === parseInt(formData.category_id)) ?? { id: 0, name: 'Uncategorized' };
+    const payload = {
+      name: formData.name,
+      description: formData.description,
+      price: parseFloat(formData.price),
+      unit: formData.unit,
+      stock: parseInt(formData.stock, 10),
+      image_url: formData.image_url,
+      category_id: parseInt(formData.category_id, 10),
+      rating: parseFloat(formData.rating)
+    };
 
-    if (editingProduct) {
-      // Update existing product
-      setProducts(products.map(p =>
-        p.id === editingProduct.id
-          ? {
-            ...p,
-            ...formData,
-            price: parseFloat(formData.price),
-            stock: parseInt(formData.stock),
-            category_id: parseInt(formData.category_id),
-            category: category.name,
-            rating: parseFloat(formData.rating)
-          }
-          : p
-      ));
-      showNotification('Product updated successfully!');
-    } else {
-      // Add new product
-      const newProduct = {
-        id: products.length + 1,
-        ...formData,
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock),
-        category_id: parseInt(formData.category_id),
-        category: category.name,
-        rating: parseFloat(formData.rating)
-      };
-      setProducts([...products, newProduct]);
-      showNotification('Product added successfully!');
+    try {
+      if (editingProduct) {
+        await api.updateProduct(editingProduct.id, payload);
+        showNotification('Product updated successfully!', 'success');
+      } else {
+        await api.createProduct(payload as any);
+        showNotification('Product added successfully!', 'success');
+      }
+
+      // Refresh list from server
+      const prods = await api.getProducts();
+      setProducts(prods as any);
+      handleCloseModal();
+    } catch (err: any) {
+      console.error(err);
+      showNotification(err?.message || 'Save failed', 'error');
     }
-
-    handleCloseModal();
   };
 
-  const handleDelete = (productId: number) => {
+  const handleDelete = async (productId: number) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      setProducts(products.filter(p => p.id !== productId));
-      showNotification('Product deleted successfully!', 'error');
+      try {
+        await api.deleteProduct(productId);
+        setProducts(products.filter(p => p.id !== productId));
+        showNotification('Product deleted successfully!', 'success');
+      } catch (err: any) {
+        console.error(err);
+        showNotification(err?.message || 'Delete failed', 'error');
+      }
     }
   };
 
@@ -277,7 +251,7 @@ export default function AdminProductManagement() {
               >
                 <option value="all">All Categories</option>
                 {categories.map(cat => (
-                  <option key={cat?.id} value={cat?.id}>{cat?.name}</option>
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
 
@@ -336,7 +310,7 @@ export default function AdminProductManagement() {
                           ? 'bg-yellow-100 text-yellow-700'
                           : 'bg-green-100 text-green-700'
                         }`}>
-                        {product.stock} units
+                        {product.stock} {product.unit}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -493,7 +467,7 @@ export default function AdminProductManagement() {
                   >
                     <option value="">Select Category</option>
                     {categories.map(cat => (
-                      <option key={cat?.id} value={cat?.id}>{cat?.name}</option>
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>

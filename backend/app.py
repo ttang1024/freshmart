@@ -6,7 +6,25 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS with explicit settings
+CORS(
+    app,
+    resources={
+        r"/api/*": {
+            "origins": [
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:3000",
+            ],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True,
+        }
+    },
+)
 
 # Database configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
@@ -139,6 +157,7 @@ def get_products():
                 "image_url": p.image_url,
                 "rating": float(p.rating) if p.rating else 0,
                 "category": p.category.name,
+                "category_id": p.category_id,
             }
             for p in products
         ]
@@ -171,6 +190,7 @@ def create_product():
         description=data.get("description", ""),
         price=data["price"],
         unit=data["unit"],
+        rating=data["rating"],
         stock=data.get("stock", 0),
         image_url=data.get("image_url", ""),
         category_id=data["category_id"],
@@ -190,6 +210,8 @@ def update_product(product_id):
     product.price = data.get("price", product.price)
     product.unit = data.get("unit", product.unit)
     product.stock = data.get("stock", product.stock)
+    product.rating = data.get("rating", product.rating)
+    product.category_id = data.get("category_id", product.category_id)
     product.image_url = data.get("image_url", product.image_url)
 
     db.session.commit()
