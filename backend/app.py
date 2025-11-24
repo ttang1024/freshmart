@@ -102,7 +102,25 @@ class OrderItem(db.Model):
     product = db.relationship("Product")
 
 
-# API Routes
+class CartItem(db.Model):
+    __tablename__ = "cart_items"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    product = db.relationship("Product")
+    user = db.relationship("User")
+
+    # Ensure unique product per user
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "product_id", name="_user_product_uc"),
+    )
 
 
 # Categories
@@ -341,6 +359,383 @@ def login_user():
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "healthy"})
+
+
+# Shopping Cart API Endpoints
+# ============================================
+
+
+@app.route("/api/users/<int:user_id>/cart", methods=["GET"])
+def get_cart(user_id):
+    """Get user's shopping cart"""
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+
+    total = sum(float(item.product.price) * item.quantity for item in cart_items)
+
+    return jsonify(
+        {
+            "items": [
+                {
+                    "id": item.id,
+                    "product_id": item.product_id,
+                    "quantity": item.quantity,
+                    "product": {
+                        "id": item.product.id,
+                        "name": item.product.name,
+                        "price": float(item.product.price),
+                        "unit": item.product.unit,
+                        "image_url": item.product.image_url,
+                        "stock": item.product.stock,
+                        "rating": (
+                            float(item.product.rating) if item.product.rating else 0
+                        ),
+                    },
+                    "subtotal": float(item.product.price * item.quantity),
+                }
+                for item in cart_items
+            ],
+            "total": round(total, 2),
+            "item_count": sum(item.quantity for item in cart_items),
+        }
+    )
+
+
+@app.route("/api/users/<int:user_id>/cart", methods=["POST"])
+def add_to_cart(user_id):
+    """Add item to cart"""
+    data = request.json
+    product_id = data.get("product_id")
+    quantity = data.get("quantity", 1)
+
+    if not product_id:
+        return jsonify({"error": "Product ID required"}), 400
+
+    # Check if product exists and has stock
+    product = Product.query.get_or_404(product_id)
+    if product.stock < quantity:
+        return jsonify({"error": f"Only {product.stock} items available"}), 400
+
+    # Check if item already in cart
+    cart_item = CartItem.query.filter_by(user_id=user_id, product_id=product_id).first()
+
+    if cart_item:
+        # Update quantity
+        new_quantity = cart_item.quantity + quantity
+        if new_quantity > product.stock:
+            return (
+                jsonify(
+                    {"error": f"Cannot add more. Only {product.stock} items available"}
+                ),
+                400,
+            )
+
+        cart_item.quantity = new_quantity
+        cart_item.updated_at = datetime.utcnow()
+        message = "Cart updated"
+    else:
+        # Add new item
+        cart_item = CartItem(user_id=user_id, product_id=product_id, quantity=quantity)
+        db.session.add(cart_item)
+        message = "Item added to cart"
+
+    db.session.commit()
+
+    return (
+        jsonify(
+            {
+                "message": message,
+                "cart_item": {
+                    "id": cart_item.id,
+                    "product_id": cart_item.product_id,
+                    "quantity": cart_item.quantity,
+                },
+            }
+        ),
+        201,
+    )
+
+
+@app.route("/api/users/<int:user_id>/cart/<int:item_id>", methods=["PUT"])
+def update_cart_item(user_id, item_id):
+    """Update cart item quantity"""
+    cart_item = CartItem.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+
+    data = request.json
+    new_quantity = data.get("quantity")
+
+    if new_quantity is None:
+        return jsonify({"error": "Quantity required"}), 400
+
+    if new_quantity <= 0:
+        # Remove item if quantity is 0 or negative
+        db.session.delete(cart_item)
+        db.session.commit()
+        return jsonify({"message": "Item removed from cart"})
+
+    # Check stock availability
+    if new_quantity > cart_item.product.stock:
+        return (
+            jsonify({"error": f"Only {cart_item.product.stock} items available"}),
+            400,
+        )
+
+    cart_item.quantity = new_quantity
+    cart_item.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message": "Cart updated",
+            "cart_item": {
+                "id": cart_item.id,
+                "quantity": cart_item.quantity,
+                "subtotal": float(cart_item.product.price * cart_item.quantity),
+            },
+        }
+    )
+
+
+@app.route("/api/users/<int:user_id>/cart/<int:item_id>", methods=["DELETE"])
+def remove_from_cart(user_id, item_id):
+    """Remove item from cart"""
+    cart_item = CartItem.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+
+    product_name = cart_item.product.name
+
+    db.session.delete(cart_item)
+    db.session.commit()
+
+    return jsonify({"message": f"{product_name} removed from cart"})
+
+
+@app.route("/api/users/<int:user_id>/cart/clear", methods=["DELETE"])
+def clear_cart(user_id):
+    """Clear entire cart"""
+    deleted_count = CartItem.query.filter_by(user_id=user_id).delete()
+    db.session.commit()
+
+    return jsonify({"message": "Cart cleared", "items_removed": deleted_count})
+
+
+@app.route("/api/users/<int:user_id>/cart/sync", methods=["POST"])
+def sync_cart(user_id):
+    """Sync local cart with server (merge carts)"""
+    data = request.json
+    local_items = data.get("items", [])
+
+    # Get existing cart
+    existing_items = CartItem.query.filter_by(user_id=user_id).all()
+    existing_products = {item.product_id: item for item in existing_items}
+
+    synced_count = 0
+
+    for local_item in local_items:
+        product_id = local_item.get("product_id")
+        quantity = local_item.get("quantity", 1)
+
+        if product_id in existing_products:
+            # Update existing item (keep higher quantity)
+            cart_item = existing_products[product_id]
+            cart_item.quantity = max(cart_item.quantity, quantity)
+            cart_item.updated_at = datetime.utcnow()
+        else:
+            # Add new item
+            cart_item = CartItem(
+                user_id=user_id, product_id=product_id, quantity=quantity
+            )
+            db.session.add(cart_item)
+
+        synced_count += 1
+
+    db.session.commit()
+
+    return jsonify(
+        {"message": "Cart synced successfully", "items_synced": synced_count}
+    )
+
+
+@app.route("/api/users/<int:user_id>/cart/validate", methods=["POST"])
+def validate_cart(user_id):
+    """Validate cart items (check stock availability)"""
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+
+    issues = []
+    valid_items = []
+
+    for item in cart_items:
+        if not item.product.is_active:
+            issues.append(
+                {
+                    "item_id": item.id,
+                    "product_name": item.product.name,
+                    "issue": "Product no longer available",
+                }
+            )
+        elif item.quantity > item.product.stock:
+            issues.append(
+                {
+                    "item_id": item.id,
+                    "product_name": item.product.name,
+                    "issue": f"Only {item.product.stock} items available (you have {item.quantity} in cart)",
+                }
+            )
+        else:
+            valid_items.append(
+                {
+                    "item_id": item.id,
+                    "product_name": item.product.name,
+                    "quantity": item.quantity,
+                    "available_stock": item.product.stock,
+                }
+            )
+
+    return jsonify(
+        {"is_valid": len(issues) == 0, "issues": issues, "valid_items": valid_items}
+    )
+
+
+# ============================================
+# Wishlist API Endpoints (Enhanced)
+# ============================================
+
+
+@app.route(
+    "/api/users/<int:user_id>/wishlist/move-to-cart/<int:product_id>", methods=["POST"]
+)
+def move_wishlist_to_cart(user_id, product_id):
+    """Move item from wishlist to cart"""
+    # Find wishlist item
+    wishlist_item = Wishlist.query.filter_by(
+        user_id=user_id, product_id=product_id
+    ).first_or_404()
+
+    # Add to cart
+    cart_item = CartItem.query.filter_by(user_id=user_id, product_id=product_id).first()
+
+    if cart_item:
+        cart_item.quantity += 1
+        cart_item.updated_at = datetime.utcnow()
+    else:
+        cart_item = CartItem(user_id=user_id, product_id=product_id, quantity=1)
+        db.session.add(cart_item)
+
+    # Remove from wishlist
+    db.session.delete(wishlist_item)
+    db.session.commit()
+
+    return jsonify({"message": "Item moved to cart", "cart_item_id": cart_item.id})
+
+
+@app.route("/api/users/<int:user_id>/wishlist/check/<int:product_id>", methods=["GET"])
+def check_wishlist(user_id, product_id):
+    """Check if product is in wishlist"""
+    exists = (
+        Wishlist.query.filter_by(user_id=user_id, product_id=product_id).first()
+        is not None
+    )
+
+    return jsonify({"in_wishlist": exists})
+
+
+# ============================================
+# Batch Operations
+# ============================================
+
+
+@app.route("/api/users/<int:user_id>/cart/batch", methods=["POST"])
+def batch_add_to_cart(user_id):
+    """Add multiple items to cart at once"""
+    data = request.json
+    items = data.get("items", [])
+
+    if not items:
+        return jsonify({"error": "No items provided"}), 400
+
+    added_count = 0
+    errors = []
+
+    for item_data in items:
+        product_id = item_data.get("product_id")
+        quantity = item_data.get("quantity", 1)
+
+        try:
+            product = Product.query.get(product_id)
+            if not product:
+                errors.append(f"Product {product_id} not found")
+                continue
+
+            if product.stock < quantity:
+                errors.append(f"{product.name}: Only {product.stock} available")
+                continue
+
+            cart_item = CartItem.query.filter_by(
+                user_id=user_id, product_id=product_id
+            ).first()
+
+            if cart_item:
+                cart_item.quantity += quantity
+            else:
+                cart_item = CartItem(
+                    user_id=user_id, product_id=product_id, quantity=quantity
+                )
+                db.session.add(cart_item)
+
+            added_count += 1
+
+        except Exception as e:
+            errors.append(f"Error adding product {product_id}: {str(e)}")
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "message": f"{added_count} items added to cart",
+            "added_count": added_count,
+            "errors": errors,
+        }
+    )
+
+
+# ============================================
+# Cart Statistics
+# ============================================
+
+
+@app.route("/api/users/<int:user_id>/cart/stats", methods=["GET"])
+def get_cart_stats(user_id):
+    """Get cart statistics"""
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+
+    if not cart_items:
+        return jsonify(
+            {
+                "total_items": 0,
+                "total_quantity": 0,
+                "subtotal": 0,
+                "estimated_delivery": 0,
+                "total": 0,
+            }
+        )
+
+    total_quantity = sum(item.quantity for item in cart_items)
+    subtotal = sum(float(item.product.price) * item.quantity for item in cart_items)
+
+    # Calculate delivery fee (free over $50)
+    delivery_fee = 0 if subtotal >= 50 else 5.99
+
+    total = subtotal + delivery_fee
+
+    return jsonify(
+        {
+            "total_items": len(cart_items),
+            "total_quantity": total_quantity,
+            "subtotal": round(subtotal, 2),
+            "estimated_delivery": delivery_fee,
+            "total": round(total, 2),
+            "free_delivery_threshold": 50.0,
+            "amount_until_free_delivery": max(0, round(50 - subtotal, 2)),
+        }
+    )
 
 
 # Initialize database

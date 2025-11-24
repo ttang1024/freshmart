@@ -5,6 +5,7 @@ import { ShoppingCart, Search, User, Menu, Heart, ChevronRight, Star, Plus, Minu
 import { productsAPI, categoriesAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import WishlistSidebar from '@/components/WishlistSidebar';
+import ProductCard from '@/components/ProductCard';
 
 interface Product {
   id: number;
@@ -28,6 +29,7 @@ export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [cart, setCart] = useState<any[]>([]);
+  const [wishlist, setWishlist] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showCart, setShowCart] = useState(false);
@@ -80,27 +82,26 @@ export default function HomePage() {
     return () => clearTimeout(debounceTimer);
   }, [selectedCategory, searchQuery]);
 
-  const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.id === product.id);
-    if (existing) {
-      setCart(cart.map(item =>
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
-    }
-  };
+  // Load cart and wishlist from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem('cart');
+    const savedWishlist = localStorage.getItem('wishlist');
 
-  const addToWishlist = (product: Product) => {
-    const existing = cart.find(item => item.id === product.id);
-    if (existing) {
-      setCart(cart.map(item =>
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
-    }
-  };
+    if (savedCart) setCart(JSON.parse(savedCart));
+    if (savedWishlist) setWishlist(JSON.parse(savedWishlist));
+  }, []);
+
+  // Save to localStorage whenever cart changes
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }, [cart]);
+
+  // Save to localStorage whenever wishlist changes
+  useEffect(() => {
+    localStorage.setItem('wishlist', JSON.stringify(wishlist));
+  }, [wishlist]);
+
+
 
   const updateQuantity = (id: number, delta: number) => {
     setCart(cart.map(item => {
@@ -216,41 +217,7 @@ export default function HomePage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {products.map(product => (
-                  <div key={product.id} className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow overflow-hidden">
-                    <div className="relative">
-                      <div className="aspect-square flex items-center justify-center bg-gray-100 text-8xl">
-                        {product.image_url}
-                      </div>
-                      <button className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100" onClick={() => addToWishlist(product)}>
-                        <Heart className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-
-                    <div className="p-4">
-                      <h4 className="font-semibold text-gray-800 mb-1">{product.name}</h4>
-                      <div className="flex items-center gap-1 mb-2">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span className="text-sm text-gray-600">{product.rating}</span>
-                      </div>
-
-                      <div className="flex items-baseline gap-1 mb-3">
-                        <span className="text-2xl font-bold text-green-600">${product.price.toFixed(2)}</span>
-                        <span className="text-sm text-gray-500">/ {product.unit}</span>
-                      </div>
-
-                      <button
-                        onClick={() => addToCart(product)}
-                        disabled={product.stock === 0}
-                        className={`w-full py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${product.stock === 0
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-green-600 text-white hover:bg-green-700'
-                          }`}
-                      >
-                        <Plus className="w-4 h-4" />
-                        {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
-                      </button>
-                    </div>
-                  </div>
+                  <ProductCard key={product.id} product={product} />
                 ))}
               </div>
             )}
