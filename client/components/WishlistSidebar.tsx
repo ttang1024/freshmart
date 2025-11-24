@@ -40,7 +40,7 @@ export default function WishlistSidebar({ isOpen, onClose }: { isOpen: boolean; 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose}>
       <div
         className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl overflow-y-auto"
         onClick={(e) => e.stopPropagation()}

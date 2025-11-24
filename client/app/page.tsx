@@ -91,6 +91,17 @@ export default function HomePage() {
     }
   };
 
+  const addToWishlist = (product: Product) => {
+    const existing = cart.find(item => item.id === product.id);
+    if (existing) {
+      setCart(cart.map(item =>
+        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+    } else {
+      setCart([...cart, { ...product, quantity: 1 }]);
+    }
+  };
+
   const updateQuantity = (id: number, delta: number) => {
     setCart(cart.map(item => {
       if (item.id === id) {
@@ -210,7 +221,7 @@ export default function HomePage() {
                       <div className="aspect-square flex items-center justify-center bg-gray-100 text-8xl">
                         {product.image_url}
                       </div>
-                      <button className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100">
+                      <button className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100" onClick={() => addToWishlist(product)}>
                         <Heart className="w-5 h-5 text-gray-600" />
                       </button>
                     </div>
@@ -250,7 +261,7 @@ export default function HomePage() {
 
       {/* Shopping Cart Sidebar */}
       {showCart && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50" onClick={() => setShowCart(false)}>
+        <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCart(false)}>
           <div
             className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
