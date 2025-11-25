@@ -116,6 +116,7 @@ export default function UserDashboard({
   const [addresses, setAddresses] = useState<Record<string, unknown>[]>(propAddresses || defaultAddresses);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressFormLoading, setAddressFormLoading] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     type: 'Home',
     name: '',
@@ -199,11 +200,24 @@ export default function UserDashboard({
 
     setAddressFormLoading(true);
     try {
-      // Add address via API
-      await addressAPI.addAddress(user.id || 1, formData);
+      if (editingAddressId) {
+        // Update existing address
+        await addressAPI.updateAddress(user.id || 1, editingAddressId, formData);
 
-      // Add to local state
-      setAddresses([...addresses, formData]);
+        // Update local state
+        setAddresses(addresses.map(addr =>
+          addr.id === editingAddressId ? { ...addr, ...formData } : addr
+        ));
+
+        alert('Address updated successfully!');
+      } else {
+        // Add new address
+        await addressAPI.addAddress(user.id || 1, formData);
+        // Add to local state
+        setAddresses([...addresses, formData]);
+
+        alert('Address added successfully!');
+      }
 
       // Reset form
       setFormData({
@@ -218,10 +232,10 @@ export default function UserDashboard({
       });
 
       setShowAddressForm(false);
-      alert('Address added successfully!');
+      setEditingAddressId(null);
     } catch (error) {
-      console.error('Error adding address:', error);
-      alert('Failed to add address. Please try again.');
+      console.error('Error saving address:', error);
+      alert('Failed to save address. Please try again.');
     } finally {
       setAddressFormLoading(false);
     }
@@ -240,6 +254,36 @@ export default function UserDashboard({
       console.error('Error deleting address:', error);
       alert('Failed to delete address. Please try again.');
     }
+  };
+
+  const handleEditAddress = (address: Record<string, unknown>) => {
+    setEditingAddressId(address.id as number);
+    setFormData({
+      type: (address.type as string) || 'Home',
+      name: (address.name as string) || '',
+      street: (address.street as string) || '',
+      city: (address.city as string) || '',
+      state: (address.state as string) || '',
+      zip: (address.zip as string) || '',
+      country: (address.country as string) || '',
+      isDefault: (address.isDefault as boolean) || false
+    });
+    setShowAddressForm(true);
+  };
+
+  const handleCloseAddressForm = () => {
+    setShowAddressForm(false);
+    setEditingAddressId(null);
+    setFormData({
+      type: 'Home',
+      name: '',
+      street: '',
+      city: '',
+      state: '',
+      zip: '',
+      country: '',
+      isDefault: false
+    });
   };
 
   return (
@@ -572,7 +616,10 @@ export default function UserDashboard({
                           <p>{address.country as React.ReactNode}</p>
                         </div>
                         <div className="flex gap-2">
-                          <button className="flex-1 border border-green-600 text-green-600 py-2 rounded-lg hover:bg-green-50 transition-colors font-semibold">
+                          <button
+                            onClick={() => handleEditAddress(address)}
+                            className="flex-1 border border-green-600 text-green-600 py-2 rounded-lg hover:bg-green-50 transition-colors font-semibold"
+                          >
                             Edit
                           </button>
                           <button
@@ -665,14 +712,16 @@ export default function UserDashboard({
         </div>
       </div>
 
-      {/* Add Address Modal */}
+      {/* Add/Edit Address Modal */}
       {showAddressForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-2xl font-bold text-gray-900">Add New Address</h3>
+              <h3 className="text-2xl font-bold text-gray-900">
+                {editingAddressId ? 'Edit Address' : 'Add New Address'}
+              </h3>
               <button
-                onClick={() => setShowAddressForm(false)}
+                onClick={handleCloseAddressForm}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -800,7 +849,7 @@ export default function UserDashboard({
               <div className="flex gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
-                  onClick={() => setShowAddressForm(false)}
+                  onClick={handleCloseAddressForm}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
                 >
                   Cancel
@@ -810,7 +859,7 @@ export default function UserDashboard({
                   disabled={addressFormLoading}
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:bg-gray-400"
                 >
-                  {addressFormLoading ? 'Adding...' : 'Add Address'}
+                  {addressFormLoading ? 'Saving...' : (editingAddressId ? 'Update Address' : 'Add Address')}
                 </button>
               </div>
             </form>
