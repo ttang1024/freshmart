@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ShoppingCart, Search, User, Menu, Heart, ChevronRight, Star, Plus, Minus } from 'lucide-react';
 import { productsAPI, categoriesAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { useWishlist } from '@/contexts/WishlistContext';
 import WishlistSidebar from '@/components/WishlistSidebar';
 import ProductCard from '@/components/ProductCard';
 
@@ -28,8 +29,8 @@ interface Category {
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [cart, setCart] = useState<any[]>([]);
-  const [wishlist, setWishlist] = useState<any[]>([]);
+  const [cart, setCart] = useState<Record<string, unknown>[]>([]);
+  const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showCart, setShowCart] = useState(false);
@@ -82,13 +83,10 @@ export default function HomePage() {
     return () => clearTimeout(debounceTimer);
   }, [selectedCategory, searchQuery]);
 
-  // Load cart and wishlist from localStorage on mount
+  // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem('cart');
-    const savedWishlist = localStorage.getItem('wishlist');
-
     if (savedCart) setCart(JSON.parse(savedCart));
-    if (savedWishlist) setWishlist(JSON.parse(savedWishlist));
   }, []);
 
   // Save to localStorage whenever cart changes
@@ -96,37 +94,19 @@ export default function HomePage() {
     localStorage.setItem('cart', JSON.stringify(cart));
   }, [cart]);
 
-  // Save to localStorage whenever wishlist changes
-  useEffect(() => {
-    localStorage.setItem('wishlist', JSON.stringify(wishlist));
-  }, [wishlist]);
-
   const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.id === product.id);
+    const existing = cart.find(item => (item.id as number) === product.id);
     if (existing) {
       setCart(cart.map(item =>
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        (item.id as number) === product.id ? { ...item, quantity: (item.quantity as number) + 1 } : item
       ));
     } else {
       setCart([...cart, { ...product, quantity: 1 }]);
     }
   };
 
-  const addToWishlist = (product: Product) => {
-    const exists = wishlist.find(item => item.id === product.id);
-    if (exists) {
-      setWishlist(wishlist.filter(item => item.id !== product.id));
-    } else {
-      setWishlist([...wishlist, { ...product }]);
-    }
-  };
-
-  const removeFromWishlist = (productId: number) => {
-    setWishlist(wishlist.filter(item => item.id !== productId));
-  };
-
   const removeFromCart = (productId: number) => {
-    setCart(cart.filter(item => item.id !== productId));
+    setCart(cart.filter(item => (item.id as number) !== productId));
   };
 
   const updateQuantity = (id: number, delta: number) => {

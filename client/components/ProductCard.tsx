@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { Heart, ShoppingCart, Star } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
+import { useWishlist } from '@/contexts/WishlistContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { wishlistAPI } from '@/lib/api';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function ProductCard({ product, onAddToCart, onAddToWishlist }: { product: any; onAddToCart?: (product: any) => void; onAddToWishlist?: (product: any) => void }) {
   const { addToCart: contextAddToCart } = useCart();
+  const { addToWishlist: contextAddToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { user } = useAuth();
-  const [isInWishlist, setIsInWishlist] = useState(false);
   const [adding, setAdding] = useState(false);
 
   const handleAddToCart = async () => {
@@ -33,7 +34,6 @@ export default function ProductCard({ product, onAddToCart, onAddToWishlist }: {
     // Use prop handler if provided for local state
     if (onAddToWishlist) {
       onAddToWishlist(product);
-      setIsInWishlist(!isInWishlist);
       return;
     }
 
@@ -43,12 +43,11 @@ export default function ProductCard({ product, onAddToCart, onAddToWishlist }: {
     }
 
     try {
-      if (isInWishlist) {
-        await wishlistAPI.removeFromWishlist(user.id, product.id);
-        setIsInWishlist(false);
+      const inWishlist = isInWishlist(product.id);
+      if (inWishlist) {
+        await removeFromWishlist(product.id);
       } else {
-        await wishlistAPI.addToWishlist(user.id, product.id);
-        setIsInWishlist(true);
+        await contextAddToWishlist(product);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -67,7 +66,7 @@ export default function ProductCard({ product, onAddToCart, onAddToWishlist }: {
           className="absolute top-3 right-3 bg-white rounded-full p-2 shadow-md hover:scale-110 transition-transform"
         >
           <Heart
-            className={`w-5 h-5 ${isInWishlist ? 'fill-pink-500 text-pink-500' : 'text-gray-600'}`}
+            className={`w-5 h-5 ${isInWishlist(product.id) ? 'fill-pink-500 text-pink-500' : 'text-gray-600'}`}
           />
         </button>
       </div>
