@@ -111,6 +111,14 @@ export default function UserDashboard({
 }: UserDashboardProps) {
   const [activeTab, setActiveTab] = useState('profile');
   const [user, setUser] = useState(propUser || defaultUser);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editProfileLoading, setEditProfileLoading] = useState(false);
+  const [editProfileData, setEditProfileData] = useState({
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
+    email: user.email || '',
+    phone: user.phone || ''
+  });
   const [orders, setOrders] = useState<Record<string, unknown>[]>(propOrders || defaultOrders);
   const [wishlist, setWishlist] = useState<WishlistItem[]>(propWishlist || []);
   const [addresses, setAddresses] = useState<Record<string, unknown>[]>(propAddresses || defaultAddresses);
@@ -372,7 +380,18 @@ export default function UserDashboard({
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-gray-900">Personal Information</h2>
-                    <button className="flex items-center gap-2 text-green-600 hover:text-green-700 font-semibold">
+                    <button
+                      className="flex items-center gap-2 text-green-600 hover:text-green-700 font-semibold"
+                      onClick={() => {
+                        setEditProfileData({
+                          firstName: user.firstName || '',
+                          lastName: user.lastName || '',
+                          email: user.email || '',
+                          phone: user.phone || ''
+                        });
+                        setShowEditProfile(true);
+                      }}
+                    >
                       <Edit className="w-5 h-5" />
                       Edit
                     </button>
@@ -419,22 +438,120 @@ export default function UserDashboard({
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-6">
-                  <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6">
+                  <div
+                    className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 cursor-pointer hover:shadow-lg transition-shadow"
+                    onClick={() => setActiveTab('orders')}
+                  >
                     <Package className="w-12 h-12 mb-4 opacity-80" />
                     <h3 className="text-3xl font-bold mb-1">{orders.length}</h3>
                     <p className="opacity-90">Total Orders</p>
                   </div>
-                  <div className="bg-gradient-to-br from-pink-500 to-pink-600 text-white rounded-xl p-6">
+                  <div className="bg-gradient-to-br from-pink-500 to-pink-600 text-white rounded-xl p-6" onClick={() => setActiveTab('wishlist')}>
                     <Heart className="w-12 h-12 mb-4 opacity-80" />
                     <h3 className="text-3xl font-bold mb-1">{wishlist.length}</h3>
                     <p className="opacity-90">Wishlist Items</p>
                   </div>
-                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6" onClick={() => setActiveTab('addresses')}>
                     <MapPin className="w-12 h-12 mb-4 opacity-80" />
                     <h3 className="text-3xl font-bold mb-1">{addresses.length}</h3>
                     <p className="opacity-90">Saved Addresses</p>
                   </div>
                 </div>
+                {/* Edit Profile Modal */}
+                {showEditProfile && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-lg max-w-lg w-full">
+                      <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                        <h3 className="text-2xl font-bold text-gray-900">Edit Personal Information</h3>
+                        <button
+                          onClick={() => setShowEditProfile(false)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <form
+                        className="p-6 space-y-4"
+                        onSubmit={async e => {
+                          e.preventDefault();
+                          setEditProfileLoading(true);
+                          try {
+                            // Simulate API call, replace with userAPI.updateProfile if available
+                            await new Promise(res => setTimeout(res, 800));
+                            setUser(prev => ({ ...prev, ...editProfileData }));
+                            setShowEditProfile(false);
+                            alert('Profile updated successfully!');
+                          } catch (err) {
+                            alert('Failed to update profile.');
+                          } finally {
+                            setEditProfileLoading(false);
+                          }
+                        }}
+                      >
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                            <input
+                              type="text"
+                              value={editProfileData.firstName}
+                              onChange={e => setEditProfileData(d => ({ ...d, firstName: e.target.value }))}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                            <input
+                              type="text"
+                              value={editProfileData.lastName}
+                              onChange={e => setEditProfileData(d => ({ ...d, lastName: e.target.value }))}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                          <input
+                            type="email"
+                            value={editProfileData.email}
+                            onChange={e => setEditProfileData(d => ({ ...d, email: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                          <input
+                            type="tel"
+                            value={editProfileData.phone}
+                            onChange={e => setEditProfileData(d => ({ ...d, phone: e.target.value }))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                          />
+                        </div>
+                        <div className="flex gap-3 pt-4 border-t border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => setShowEditProfile(false)}
+                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={editProfileLoading}
+                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:bg-gray-400"
+                          >
+                            {editProfileLoading ? 'Saving...' : 'Save Changes'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
