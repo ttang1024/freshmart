@@ -2,29 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { userAPI, ordersAPI, wishlistAPI, addressAPI } from '@/lib/api';
 import UserDashboard from '@/components/UserDashboard'; // Import the artifact
 
 export default function ProfilePage() {
   const { user, isAuthenticated } = useAuth();
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [profileData, setProfileData] = useState(null);
-  const [orders, setOrders] = useState([]);
-  const [wishlist, setWishlist] = useState([]);
-  const [addresses, setAddresses] = useState([]);
-
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      fetchAllData();
-    }
-  }, [isAuthenticated, user]);
+  const [profileData, setProfileData] = useState<Record<string, unknown> | null>(null);
+  const [orders, setOrders] = useState<Record<string, unknown>[]>([]);
+  const [wishlist, setWishlist] = useState<Record<string, unknown>[]>([]);
+  const [addresses, setAddresses] = useState<Record<string, unknown>[]>([]);
 
   const fetchAllData = async () => {
     setLoading(true);
     try {
+      if (!user?.id) return;
       const [profile, ordersData, wishlistData, addressesData] = await Promise.all([
         userAPI.getProfile(user.id),
         ordersAPI.getUserOrders(user.id),
@@ -40,6 +33,24 @@ export default function ProfilePage() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      fetchAllData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.id]);
+
+  const handleRemoveFromWishlist = async (productId: number) => {
+    if (!user?.id) return;
+    try {
+      await wishlistAPI.removeFromWishlist(user.id, productId);
+      // Update local state
+      setWishlist(wishlist.filter((item) => (item.product_id as number) !== productId));
+    } catch (error) {
+      console.error('Error removing from wishlist:', error);
     }
   };
 
@@ -59,6 +70,7 @@ export default function ProfilePage() {
         wishlist={wishlist}
         addresses={addresses}
         onRefresh={fetchAllData}
+        onRemoveFromWishlist={handleRemoveFromWishlist}
       />
     </ProtectedRoute>
   );

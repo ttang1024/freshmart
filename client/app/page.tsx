@@ -101,7 +101,33 @@ export default function HomePage() {
     localStorage.setItem('wishlist', JSON.stringify(wishlist));
   }, [wishlist]);
 
+  const addToCart = (product: Product) => {
+    const existing = cart.find(item => item.id === product.id);
+    if (existing) {
+      setCart(cart.map(item =>
+        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+    } else {
+      setCart([...cart, { ...product, quantity: 1 }]);
+    }
+  };
 
+  const addToWishlist = (product: Product) => {
+    const exists = wishlist.find(item => item.id === product.id);
+    if (exists) {
+      setWishlist(wishlist.filter(item => item.id !== product.id));
+    } else {
+      setWishlist([...wishlist, { ...product }]);
+    }
+  };
+
+  const removeFromWishlist = (productId: number) => {
+    setWishlist(wishlist.filter(item => item.id !== productId));
+  };
+
+  const removeFromCart = (productId: number) => {
+    setCart(cart.filter(item => item.id !== productId));
+  };
 
   const updateQuantity = (id: number, delta: number) => {
     setCart(cart.map(item => {
@@ -115,6 +141,7 @@ export default function HomePage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const wishlistCount = wishlist.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -141,7 +168,14 @@ export default function HomePage() {
             </div>
             <div className="flex items-center gap-6">
               <User className="w-6 h-6 cursor-pointer hover:opacity-80" onClick={() => router.push('/profile')} />
-              <Heart className="w-6 h-6 cursor-pointer hover:opacity-80" onClick={() => setShowWishlist(!showWishlist)} />
+              <div className="relative cursor-pointer" onClick={() => setShowWishlist(!showWishlist)}>
+                <Heart className={`w-6 h-6 hover:opacity-80 ${wishlistCount > 0 ? 'text-pink-300 fill-pink-300' : ''}`} />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-pink-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {wishlistCount}
+                  </span>
+                )}
+              </div>
               <div className="relative cursor-pointer" onClick={() => setShowCart(!showCart)}>
                 <ShoppingCart className="w-6 h-6 hover:opacity-80" />
                 {cartCount > 0 && (
@@ -217,14 +251,25 @@ export default function HomePage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {products.map(product => (
-                  <ProductCard key={product.id} product={product} />
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onAddToCart={addToCart}
+                    onAddToWishlist={addToWishlist}
+                  />
                 ))}
               </div>
             )}
           </>
         )}
       </main>
-      <WishlistSidebar isOpen={showWishlist} onClose={() => setShowWishlist(false)} />
+      <WishlistSidebar
+        isOpen={showWishlist}
+        onClose={() => setShowWishlist(false)}
+        wishlistItems={wishlist}
+        onRemove={removeFromWishlist}
+        onAddToCart={addToCart}
+      />
 
       {/* Shopping Cart Sidebar */}
       {showCart && (
@@ -271,8 +316,16 @@ export default function HomePage() {
                             <Plus className="w-4 h-4" />
                           </button>
                         </div>
-                        <div className="font-bold text-green-600">
-                          ${(item.price * item.quantity).toFixed(2)}
+                        <div className="text-right">
+                          <div className="font-bold text-green-600 mb-2">
+                            ${(item.price * item.quantity).toFixed(2)}
+                          </div>
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="text-red-500 hover:text-red-700 text-sm font-semibold"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </div>
                     ))}

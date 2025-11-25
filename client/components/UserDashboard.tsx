@@ -1,85 +1,137 @@
 import { useState, useEffect } from 'react';
-import { User, Package, Heart, Settings, MapPin, CreditCard, Bell, Shield, ChevronRight, Edit, Trash2, Star, ShoppingBag, Calendar, Truck, CheckCircle, Clock, X } from 'lucide-react';
+import { User, Package, Heart, Settings, MapPin, CreditCard, Bell, Shield, ChevronRight, Edit, Trash2, Star, ShoppingBag, Calendar, Truck, CheckCircle, Clock } from 'lucide-react';
 
-export default function UserDashboard() {
-  const [activeTab, setActiveTab] = useState('profile');
-  const [user, setUser] = useState({
+interface WishlistItem {
+  id?: number | string;
+  product_id?: number | string;
+  name?: string | React.ReactNode;
+  price?: number;
+  unit?: string;
+  image?: string | React.ReactNode;
+  rating?: number;
+  stock?: number;
+  [key: string]: unknown;
+}
+
+interface UserDashboardProps {
+  user?: {
+    id?: number;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    joinedDate?: string;
+  } | null;
+  orders?: Record<string, unknown>[];
+  wishlist?: WishlistItem[];
+  addresses?: Record<string, unknown>[];
+  _onRefresh?: () => Promise<void>;
+  onRemoveFromWishlist?: (productId: number) => Promise<void>;
+  _onAddToCart?: (product: Record<string, unknown>) => void;
+}
+
+const defaultUser = {
+  id: 1,
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john.doe@example.com',
+  phone: '+1 234 567 8900',
+  joinedDate: '2024-01-15'
+};
+
+const defaultOrders = [
+  {
+    id: 1001,
+    date: '2025-01-20',
+    status: 'delivered',
+    total: 89.97,
+    items: 3,
+    products: [
+      { id: 1, name: 'Fresh Bananas', price: 3.99, quantity: 2, image: '🍌' },
+      { id: 2, name: 'Organic Tomatoes', price: 5.99, quantity: 1, image: '🍅' }
+    ]
+  },
+  {
+    id: 1002,
+    date: '2025-01-18',
+    status: 'in-transit',
+    total: 45.50,
+    items: 2,
+    products: [
+      { id: 3, name: 'Greek Yogurt', price: 7.99, quantity: 1, image: '🥛' },
+      { id: 4, name: 'Sourdough Bread', price: 4.50, quantity: 1, image: '🍞' }
+    ]
+  },
+  {
+    id: 1003,
+    date: '2025-01-15',
+    status: 'processing',
+    total: 124.99,
+    items: 5,
+    products: [
+      { id: 5, name: 'Fresh Salmon', price: 24.99, quantity: 1, image: '🐟' }
+    ]
+  }
+];
+
+const defaultAddresses = [
+  {
     id: 1,
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john.doe@example.com',
-    phone: '+1 234 567 8900',
-    joinedDate: '2024-01-15'
-  });
+    type: 'Home',
+    name: 'John Doe',
+    street: '123 Main Street',
+    city: 'Hamilton',
+    state: 'Waikato',
+    zip: '3200',
+    country: 'New Zealand',
+    isDefault: true
+  },
+  {
+    id: 2,
+    type: 'Work',
+    name: 'John Doe',
+    street: '456 Office Ave',
+    city: 'Auckland',
+    state: 'Auckland',
+    zip: '1010',
+    country: 'New Zealand',
+    isDefault: false
+  }
+];
 
-  const [orders, setOrders] = useState([
-    {
-      id: 1001,
-      date: '2025-01-20',
-      status: 'delivered',
-      total: 89.97,
-      items: 3,
-      products: [
-        { id: 1, name: 'Fresh Bananas', price: 3.99, quantity: 2, image: '🍌' },
-        { id: 2, name: 'Organic Tomatoes', price: 5.99, quantity: 1, image: '🍅' }
-      ]
-    },
-    {
-      id: 1002,
-      date: '2025-01-18',
-      status: 'in-transit',
-      total: 45.50,
-      items: 2,
-      products: [
-        { id: 3, name: 'Greek Yogurt', price: 7.99, quantity: 1, image: '🥛' },
-        { id: 4, name: 'Sourdough Bread', price: 4.50, quantity: 1, image: '🍞' }
-      ]
-    },
-    {
-      id: 1003,
-      date: '2025-01-15',
-      status: 'processing',
-      total: 124.99,
-      items: 5,
-      products: [
-        { id: 5, name: 'Fresh Salmon', price: 24.99, quantity: 1, image: '🐟' }
-      ]
-    }
-  ]);
+export default function UserDashboard({
+  user: propUser,
+  orders: propOrders,
+  wishlist: propWishlist,
+  addresses: propAddresses,
+  _onRefresh,
+  onRemoveFromWishlist,
+  _onAddToCart
+}: UserDashboardProps) {
+  const [activeTab, setActiveTab] = useState('profile');
+  const [user, setUser] = useState(propUser || defaultUser);
+  const [orders, setOrders] = useState<Record<string, unknown>[]>(propOrders || defaultOrders);
+  const [wishlist, setWishlist] = useState<WishlistItem[]>(propWishlist || []);
+  const [addresses, setAddresses] = useState<Record<string, unknown>[]>(propAddresses || defaultAddresses);
 
-  const [wishlist, setWishlist] = useState([
-    { id: 1, name: 'Fresh Strawberries', price: 7.99, unit: 'punnet', image: '🍓', rating: 4.8, stock: 25 },
-    { id: 2, name: 'Avocados', price: 2.99, unit: 'each', image: '🥑', rating: 4.6, stock: 45 },
-    { id: 3, name: 'Blueberries', price: 8.99, unit: 'punnet', image: '🫐', rating: 4.7, stock: 30 },
-    { id: 4, name: 'Organic Honey', price: 12.99, unit: 'jar', image: '🍯', rating: 4.9, stock: 15 }
-  ]);
+  // Update state when props change
+  useEffect(() => {
+    if (propUser) setUser(propUser);
+  }, [propUser]);
 
-  const [addresses, setAddresses] = useState([
-    {
-      id: 1,
-      type: 'Home',
-      name: 'John Doe',
-      street: '123 Main Street',
-      city: 'Hamilton',
-      state: 'Waikato',
-      zip: '3200',
-      country: 'New Zealand',
-      isDefault: true
-    },
-    {
-      id: 2,
-      type: 'Work',
-      name: 'John Doe',
-      street: '456 Office Ave',
-      city: 'Auckland',
-      state: 'Auckland',
-      zip: '1010',
-      country: 'New Zealand',
-      isDefault: false
-    }
-  ]);
+  useEffect(() => {
+    if (propOrders) setOrders(propOrders);
+  }, [propOrders]);
 
-  const getStatusColor = (status) => {
+  useEffect(() => {
+    if (propWishlist) setWishlist(propWishlist);
+  }, [propWishlist]);
+
+  useEffect(() => {
+    if (propAddresses) setAddresses(propAddresses);
+  }, [propAddresses]);
+
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'delivered': return 'bg-green-100 text-green-700';
       case 'in-transit': return 'bg-blue-100 text-blue-700';
@@ -89,7 +141,7 @@ export default function UserDashboard() {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'delivered': return <CheckCircle className="w-5 h-5" />;
       case 'in-transit': return <Truck className="w-5 h-5" />;
@@ -98,12 +150,21 @@ export default function UserDashboard() {
     }
   };
 
-  const removeFromWishlist = (productId) => {
-    setWishlist(wishlist.filter(item => item.id !== productId));
+  const handleRemoveFromWishlist = async (productId: number) => {
+    if (onRemoveFromWishlist) {
+      await onRemoveFromWishlist(productId);
+    }
+    // Also update local state
+    setWishlist(wishlist.filter(item => item.id !== productId && item.product_id !== productId));
   };
 
-  const addToCart = (product) => {
-    alert(`Added ${product.name} to cart!`);
+  const handleAddToCart = (product: WishlistItem) => {
+    if (_onAddToCart) {
+      _onAddToCart(product);
+    } else {
+      // Fallback behavior
+      console.log(`Added ${product.name} to cart!`);
+    }
   };
 
   return (
@@ -136,7 +197,7 @@ export default function UserDashboard() {
                     }`}
                 >
                   <User className="w-5 h-5" />
-                  My Profile
+                  Profile
                 </button>
 
                 <button
@@ -145,7 +206,7 @@ export default function UserDashboard() {
                     }`}
                 >
                   <Package className="w-5 h-5" />
-                  My Orders
+                  Orders
                   <span className="ml-auto bg-green-100 text-green-600 px-2 py-1 rounded-full text-xs font-bold">
                     {orders.length}
                   </span>
@@ -274,62 +335,70 @@ export default function UserDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {orders.map(order => (
-                        <div key={order.id} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <div className="flex items-center gap-3 mb-2">
-                                <h3 className="font-bold text-lg">Order #{order.id}</h3>
-                                <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${getStatusColor(order.status)}`}>
-                                  {getStatusIcon(order.status)}
-                                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-4 text-sm text-gray-600">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-4 h-4" />
-                                  {new Date(order.date).toLocaleDateString()}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <ShoppingBag className="w-4 h-4" />
-                                  {order.items} items
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-2xl font-bold text-green-600">${order.total.toFixed(2)}</p>
-                            </div>
-                          </div>
-
-                          <div className="border-t pt-4 mt-4">
-                            <div className="flex items-center gap-4 mb-4">
-                              {order.products.slice(0, 3).map((product, idx) => (
-                                <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
-                                  <div className="text-3xl">{product.image}</div>
-                                  <div>
-                                    <p className="font-semibold text-sm">{product.name}</p>
-                                    <p className="text-xs text-gray-600">Qty: {product.quantity}</p>
-                                  </div>
+                      {orders.map(order => {
+                        const orderId = order.id as React.Key;
+                        const orderStatus = order.status as string;
+                        const orderDate = order.date as string;
+                        const orderItems = order.items as number;
+                        const orderTotal = order.total as number;
+                        const orderProducts = order.products as Record<string, unknown>[];
+                        return (
+                          <div key={orderId} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                            <div className="flex items-start justify-between mb-4">
+                              <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className="font-bold text-lg">Order #{orderId}</h3>
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${getStatusColor(orderStatus)}`}>
+                                    {getStatusIcon(orderStatus)}
+                                    {orderStatus.charAt(0).toUpperCase() + orderStatus.slice(1)}
+                                  </span>
                                 </div>
-                              ))}
-                              {order.items > 3 && (
-                                <span className="text-sm text-gray-500">+{order.items - 3} more</span>
-                              )}
+                                <div className="flex items-center gap-4 text-sm text-gray-600">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-4 h-4" />
+                                    {new Date(orderDate).toLocaleDateString()}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <ShoppingBag className="w-4 h-4" />
+                                    {orderItems} items
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-bold text-green-600">${(orderTotal as number).toFixed(2)}</p>
+                              </div>
                             </div>
 
-                            <div className="flex gap-3">
-                              <button className="flex-1 border border-green-600 text-green-600 py-2 rounded-lg hover:bg-green-50 transition-colors font-semibold">
-                                View Details
-                              </button>
-                              {order.status === 'delivered' && (
-                                <button className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors font-semibold">
-                                  Reorder
+                            <div className="border-t pt-4 mt-4">
+                              <div className="flex items-center gap-4 mb-4">
+                                {orderProducts.slice(0, 3).map((product: Record<string, unknown>, idx: number) => (
+                                  <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
+                                    <div className="text-3xl">{product.image as React.ReactNode}</div>
+                                    <div>
+                                      <p className="font-semibold text-sm">{product.name as React.ReactNode}</p>
+                                      <p className="text-xs text-gray-600">Qty: {product.quantity as React.ReactNode}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                                {orderItems > 3 && (
+                                  <span className="text-sm text-gray-500">+{orderItems - 3} more</span>
+                                )}
+                              </div>
+
+                              <div className="flex gap-3">
+                                <button className="flex-1 border border-green-600 text-green-600 py-2 rounded-lg hover:bg-green-50 transition-colors font-semibold">
+                                  View Details
                                 </button>
-                              )}
+                                {orderStatus === 'delivered' && (
+                                  <button className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors font-semibold">
+                                    Reorder
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -352,40 +421,43 @@ export default function UserDashboard() {
                     </div>
                   ) : (
                     <div className="grid md:grid-cols-2 gap-6">
-                      {wishlist.map(product => (
-                        <div key={product.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                          <div className="flex gap-4">
-                            <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center text-5xl flex-shrink-0">
-                              {product.image}
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg mb-1">{product.name}</h3>
-                              <div className="flex items-center gap-1 mb-2">
-                                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                                <span className="text-sm text-gray-600">{product.rating}</span>
+                      {wishlist.map((product) => {
+                        const productId = product.id || product.product_id;
+                        return (
+                          <div key={productId as React.Key} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                            <div className="flex gap-4">
+                              <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center text-5xl flex-shrink-0">
+                                {product.image as React.ReactNode}
                               </div>
-                              <div className="flex items-baseline gap-1 mb-3">
-                                <span className="text-2xl font-bold text-green-600">${product.price}</span>
-                                <span className="text-sm text-gray-500">/ {product.unit}</span>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => addToCart(product)}
-                                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold"
-                                >
-                                  Add to Cart
-                                </button>
-                                <button
-                                  onClick={() => removeFromWishlist(product.id)}
-                                  className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                                >
-                                  <Trash2 className="w-5 h-5 text-red-500" />
-                                </button>
+                              <div className="flex-1">
+                                <h3 className="font-bold text-lg mb-1">{product.name as React.ReactNode}</h3>
+                                <div className="flex items-center gap-1 mb-2">
+                                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                  <span className="text-sm text-gray-600">{product.rating as React.ReactNode}</span>
+                                </div>
+                                <div className="flex items-baseline gap-1 mb-3">
+                                  <span className="text-2xl font-bold text-green-600">${product.price as React.ReactNode}</span>
+                                  <span className="text-sm text-gray-500">/ {(product.unit as string) || 'item'}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleAddToCart(product)}
+                                    className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold"
+                                  >
+                                    Add to Cart
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveFromWishlist(productId as number)}
+                                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                  >
+                                    <Trash2 className="w-5 h-5 text-red-500" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

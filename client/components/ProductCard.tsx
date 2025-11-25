@@ -6,8 +6,8 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { wishlistAPI } from '@/lib/api';
 
-export default function ProductCard({ product }: { product: any }) {
-  const { addToCart } = useCart();
+export default function ProductCard({ product, onAddToCart, onAddToWishlist }: { product: any; onAddToCart?: (product: any) => void; onAddToWishlist?: (product: any) => void }) {
+  const { addToCart: contextAddToCart } = useCart();
   const { user } = useAuth();
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -15,7 +15,12 @@ export default function ProductCard({ product }: { product: any }) {
   const handleAddToCart = async () => {
     setAdding(true);
     try {
-      await addToCart(product);
+      // Use prop handler if provided, otherwise use context
+      if (onAddToCart) {
+        onAddToCart(product);
+      } else {
+        await contextAddToCart(product);
+      }
       // Show success notification
     } catch (error) {
       console.error('Error:', error);
@@ -25,6 +30,13 @@ export default function ProductCard({ product }: { product: any }) {
   };
 
   const toggleWishlist = async () => {
+    // Use prop handler if provided for local state
+    if (onAddToWishlist) {
+      onAddToWishlist(product);
+      setIsInWishlist(!isInWishlist);
+      return;
+    }
+
     if (!user) {
       alert('Please login to add to wishlist');
       return;
