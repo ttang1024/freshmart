@@ -123,6 +123,44 @@ class CartItem(db.Model):
     )
 
 
+class Wishlist(db.Model):
+    __tablename__ = "wishlist"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    product = db.relationship("Product")
+    user = db.relationship("User")
+
+    # Ensure unique product per user
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "product_id", name="_wishlist_user_product_uc"),
+    )
+
+
+class Address(db.Model):
+    __tablename__ = "addresses"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # Home, Work, etc.
+    name = db.Column(db.String(100), nullable=False)
+    street = db.Column(db.String(200), nullable=False)
+    city = db.Column(db.String(100), nullable=False)
+    state = db.Column(db.String(100), nullable=False)
+    zip = db.Column(db.String(20), nullable=False)
+    country = db.Column(db.String(100), nullable=False)
+    is_default = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    user = db.relationship("User")
+
+
 # Categories
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
@@ -353,6 +391,116 @@ def login_user():
         )
 
     return jsonify({"error": "Invalid credentials"}), 401
+
+
+@app.route("/api/users/<int:user_id>", methods=["GET"])
+def get_user_profile(user_id):
+    """Get user profile information"""
+    user = User.query.get_or_404(user_id)
+    return jsonify(
+        {
+            "id": user.id,
+            "email": user.email,
+            "firstName": user.first_name,
+            "lastName": user.last_name,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "joinedDate": user.created_at.isoformat() if user.created_at else None,
+        }
+    )
+
+
+# Addresses
+@app.route("/api/users/<int:user_id>/addresses", methods=["GET"])
+def get_user_addresses(user_id):
+    """Get all addresses for a user"""
+    # Check if user exists
+    User.query.get_or_404(user_id)
+
+    addresses = Address.query.filter_by(user_id=user_id).all()
+    return jsonify(
+        [
+            {
+                "id": a.id,
+                "type": a.type,
+                "name": a.name,
+                "street": a.street,
+                "city": a.city,
+                "state": a.state,
+                "zip": a.zip,
+                "country": a.country,
+                "isDefault": a.is_default,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in addresses
+        ]
+    )
+
+
+@app.route("/api/users/<int:user_id>/addresses", methods=["POST"])
+def add_address(user_id):
+    """Add a new address for user"""
+    # Check if user exists
+    User.query.get_or_404(user_id)
+
+    data = request.json
+
+    # If this is being set as default, unset other defaults
+    if data.get("isDefault") or data.get("is_default"):
+        Address.query.filter_by(user_id=user_id, is_default=True).update(
+            {"is_default": False}
+        )
+
+    address = Address(
+        user_id=user_id,
+        type=data.get("type", "Home"),
+        name=data.get("name", ""),
+        street=data.get("street", ""),
+        city=data.get("city", ""),
+        state=data.get("state", ""),
+        zip=data.get("zip", ""),
+        country=data.get("country", ""),
+        is_default=data.get("isDefault") or data.get("is_default", False),
+    )
+    db.session.add(address)
+    db.session.commit()
+
+    return jsonify({"id": address.id, "message": "Address added"}), 201
+
+
+@app.route("/api/users/<int:user_id>/addresses/<int:address_id>", methods=["PUT"])
+def update_address(user_id, address_id):
+    """Update an address"""
+    address = Address.query.filter_by(id=address_id, user_id=user_id).first_or_404()
+    data = request.json
+
+    # If this is being set as default, unset other defaults
+    if data.get("isDefault") or data.get("is_default"):
+        Address.query.filter_by(user_id=user_id, is_default=True).update(
+            {"is_default": False}
+        )
+
+    address.type = data.get("type", address.type)
+    address.name = data.get("name", address.name)
+    address.street = data.get("street", address.street)
+    address.city = data.get("city", address.city)
+    address.state = data.get("state", address.state)
+    address.zip = data.get("zip", address.zip)
+    address.country = data.get("country", address.country)
+    if "isDefault" in data or "is_default" in data:
+        address.is_default = data.get("isDefault") or data.get("is_default", False)
+
+    db.session.commit()
+    return jsonify({"message": "Address updated"})
+
+
+@app.route("/api/users/<int:user_id>/addresses/<int:address_id>", methods=["DELETE"])
+def delete_address(user_id, address_id):
+    """Delete an address"""
+    address = Address.query.filter_by(id=address_id, user_id=user_id).first_or_404()
+    db.session.delete(address)
+    db.session.commit()
+    return jsonify({"message": "Address deleted"})
 
 
 # Health check
@@ -597,6 +745,80 @@ def validate_cart(user_id):
 # ============================================
 # Wishlist API Endpoints (Enhanced)
 # ============================================
+
+
+@app.route("/api/users/<int:user_id>/wishlist", methods=["GET"])
+def get_wishlist(user_id):
+    """Get user's wishlist with product details"""
+    wishlist_items = Wishlist.query.filter_by(user_id=user_id).all()
+
+    return jsonify(
+        [
+            {
+                "id": item.id,
+                "product_id": item.product_id,
+                "name": item.product.name,
+                "price": float(item.product.price),
+                "unit": item.product.unit,
+                "image": item.product.image_url,
+                "rating": float(item.product.rating) if item.product.rating else 0,
+                "stock": item.product.stock,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in wishlist_items
+        ]
+    )
+
+
+@app.route("/api/users/<int:user_id>/wishlist", methods=["POST"])
+def add_to_wishlist(user_id):
+    """Add item to wishlist"""
+    data = request.json
+    product_id = data.get("product_id")
+
+    if not product_id:
+        return jsonify({"error": "Product ID required"}), 400
+
+    # Check if product exists
+    product = Product.query.get_or_404(product_id)
+
+    # Check if already in wishlist
+    existing = Wishlist.query.filter_by(user_id=user_id, product_id=product_id).first()
+    if existing:
+        return jsonify({"error": "Product already in wishlist"}), 400
+
+    wishlist_item = Wishlist(user_id=user_id, product_id=product_id)
+    db.session.add(wishlist_item)
+    db.session.commit()
+
+    return (
+        jsonify(
+            {
+                "message": "Item added to wishlist",
+                "wishlist_item": {
+                    "id": wishlist_item.id,
+                    "product_id": wishlist_item.product_id,
+                    "name": product.name,
+                    "price": float(product.price),
+                },
+            }
+        ),
+        201,
+    )
+
+
+@app.route("/api/users/<int:user_id>/wishlist/<int:product_id>", methods=["DELETE"])
+def remove_from_wishlist(user_id, product_id):
+    """Remove item from wishlist"""
+    wishlist_item = Wishlist.query.filter_by(
+        user_id=user_id, product_id=product_id
+    ).first_or_404()
+
+    product_name = wishlist_item.product.name
+    db.session.delete(wishlist_item)
+    db.session.commit()
+
+    return jsonify({"message": f"{product_name} removed from wishlist"})
 
 
 @app.route(
