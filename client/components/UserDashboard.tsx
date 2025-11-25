@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, Package, Heart, Settings, MapPin, CreditCard, Bell, Shield, ChevronRight, Edit, Trash2, Star, ShoppingBag, Calendar, Truck, CheckCircle, Clock } from 'lucide-react';
+import { addressAPI } from '../lib/api';
 
 interface WishlistItem {
   id?: number | string;
@@ -113,6 +114,18 @@ export default function UserDashboard({
   const [orders, setOrders] = useState<Record<string, unknown>[]>(propOrders || defaultOrders);
   const [wishlist, setWishlist] = useState<WishlistItem[]>(propWishlist || []);
   const [addresses, setAddresses] = useState<Record<string, unknown>[]>(propAddresses || defaultAddresses);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [addressFormLoading, setAddressFormLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    type: 'Home',
+    name: '',
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
+    country: '',
+    isDefault: false
+  });
 
   // Update state when props change
   useEffect(() => {
@@ -164,6 +177,68 @@ export default function UserDashboard({
     } else {
       // Fallback behavior
       console.log(`Added ${product.name} to cart!`);
+    }
+  };
+
+  const handleAddressFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+  };
+
+  const handleAddressSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate form
+    if (!formData.name || !formData.street || !formData.city || !formData.state || !formData.zip || !formData.country) {
+      alert('Please fill in all address fields');
+      return;
+    }
+
+    setAddressFormLoading(true);
+    try {
+      // Add address via API
+      await addressAPI.addAddress(user.id || 1, formData);
+
+      // Add to local state
+      setAddresses([...addresses, formData]);
+
+      // Reset form
+      setFormData({
+        type: 'Home',
+        name: '',
+        street: '',
+        city: '',
+        state: '',
+        zip: '',
+        country: '',
+        isDefault: false
+      });
+
+      setShowAddressForm(false);
+      alert('Address added successfully!');
+    } catch (error) {
+      console.error('Error adding address:', error);
+      alert('Failed to add address. Please try again.');
+    } finally {
+      setAddressFormLoading(false);
+    }
+  };
+
+  const handleDeleteAddress = async (addressId: unknown) => {
+    if (!window.confirm('Are you sure you want to delete this address?')) {
+      return;
+    }
+
+    try {
+      await addressAPI.deleteAddress(user.id || 1, addressId as number);
+      setAddresses(addresses.filter(addr => addr.id !== addressId));
+      alert('Address deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting address:', error);
+      alert('Failed to delete address. Please try again.');
     }
   };
 
@@ -470,7 +545,10 @@ export default function UserDashboard({
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-gray-900">Saved Addresses</h2>
-                    <button className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                    <button
+                      onClick={() => setShowAddressForm(true)}
+                      className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                    >
                       <MapPin className="w-5 h-5" />
                       Add New Address
                     </button>
@@ -478,26 +556,29 @@ export default function UserDashboard({
 
                   <div className="grid md:grid-cols-2 gap-6">
                     {addresses.map(address => (
-                      <div key={address.id} className="border border-gray-200 rounded-xl p-6 relative">
-                        {address.isDefault && (
+                      <div key={address.id as React.Key} className="border border-gray-200 rounded-xl p-6 relative">
+                        {(address.isDefault as boolean) && (
                           <span className="absolute top-4 right-4 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
                             Default
                           </span>
                         )}
                         <div className="mb-4">
-                          <h3 className="font-bold text-lg mb-1">{address.type}</h3>
-                          <p className="text-gray-700">{address.name}</p>
+                          <h3 className="font-bold text-lg mb-1">{address.type as React.ReactNode}</h3>
+                          <p className="text-gray-700">{address.name as React.ReactNode}</p>
                         </div>
                         <div className="text-gray-600 space-y-1 mb-4">
-                          <p>{address.street}</p>
-                          <p>{address.city}, {address.state} {address.zip}</p>
-                          <p>{address.country}</p>
+                          <p>{address.street as React.ReactNode}</p>
+                          <p>{address.city as React.ReactNode}, {address.state as React.ReactNode} {address.zip as React.ReactNode}</p>
+                          <p>{address.country as React.ReactNode}</p>
                         </div>
                         <div className="flex gap-2">
                           <button className="flex-1 border border-green-600 text-green-600 py-2 rounded-lg hover:bg-green-50 transition-colors font-semibold">
                             Edit
                           </button>
-                          <button className="px-4 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                          <button
+                            onClick={() => handleDeleteAddress(address.id)}
+                            className="px-4 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                          >
                             <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
@@ -583,6 +664,159 @@ export default function UserDashboard({
           </div>
         </div>
       </div>
+
+      {/* Add Address Modal */}
+      {showAddressForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-gray-900">Add New Address</h3>
+              <button
+                onClick={() => setShowAddressForm(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddressSubmit} className="p-6 space-y-4">
+              {/* Address Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Address Type</label>
+                <select
+                  name="type"
+                  value={formData.type}
+                  onChange={handleAddressFormChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option>Home</option>
+                  <option>Work</option>
+                  <option>Other</option>
+                </select>
+              </div>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleAddressFormChange}
+                  placeholder="John Doe"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
+                />
+              </div>
+
+              {/* Street Address */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
+                <input
+                  type="text"
+                  name="street"
+                  value={formData.street}
+                  onChange={handleAddressFormChange}
+                  placeholder="123 Main Street"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
+                />
+              </div>
+
+              {/* City and State */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                  <input
+                    type="text"
+                    name="city"
+                    value={formData.city}
+                    onChange={handleAddressFormChange}
+                    placeholder="Hamilton"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">State/Province</label>
+                  <input
+                    type="text"
+                    name="state"
+                    value={formData.state}
+                    onChange={handleAddressFormChange}
+                    placeholder="Waikato"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* ZIP Code and Country */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">ZIP/Postal Code</label>
+                  <input
+                    type="text"
+                    name="zip"
+                    value={formData.zip}
+                    onChange={handleAddressFormChange}
+                    placeholder="3200"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                  <input
+                    type="text"
+                    name="country"
+                    value={formData.country}
+                    onChange={handleAddressFormChange}
+                    placeholder="New Zealand"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Set as Default */}
+              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+                <input
+                  type="checkbox"
+                  name="isDefault"
+                  id="isDefault"
+                  checked={formData.isDefault}
+                  onChange={handleAddressFormChange}
+                  className="w-5 h-5 text-green-600 rounded focus:ring-2 focus:ring-green-500"
+                />
+                <label htmlFor="isDefault" className="text-sm font-medium text-gray-700 cursor-pointer">
+                  Set as default address
+                </label>
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowAddressForm(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addressFormLoading}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold disabled:bg-gray-400"
+                >
+                  {addressFormLoading ? 'Adding...' : 'Add Address'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
