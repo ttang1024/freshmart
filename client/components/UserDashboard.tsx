@@ -504,11 +504,19 @@ export default function UserDashboard({
                           e.preventDefault();
                           setEditProfileLoading(true);
                           try {
-                            // Simulate API call, replace with userAPI.updateProfile if available
-                            await new Promise(res => setTimeout(res, 800));
-                            setUser(prev => ({ ...prev, ...editProfileData }));
-                            setShowEditProfile(false);
-                            alert('Profile updated successfully!');
+                            const res = await fetch(`/api/users/${user.id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(editProfileData)
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setUser(prev => ({ ...prev, ...editProfileData }));
+                              setShowEditProfile(false);
+                              alert('Profile updated successfully!');
+                            } else {
+                              alert(data.error || 'Failed to update profile.');
+                            }
                           } catch (err) {
                             // Optionally log error
                             console.error('Settings save error:', err);

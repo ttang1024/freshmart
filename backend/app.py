@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+import json
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from dotenv import load_dotenv
@@ -456,17 +457,210 @@ def get_user_profile(user_id):
     last_name = row[3]
     created_at = row[4]
 
-    return jsonify(
-        {
-            "id": user_id_val,
-            "email": email,
-            "firstName": first_name,
-            "lastName": last_name,
-            "first_name": first_name,
-            "last_name": last_name,
-            "joinedDate": created_at.isoformat() if created_at else None,
+    resp = {
+        "id": user_id_val,
+        "email": email,
+        "firstName": first_name,
+        "lastName": last_name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "joinedDate": created_at.isoformat() if created_at else None,
+    }
+
+    # Defensively fetch phone if the column exists
+    try:
+        available_cols = set(c.name for c in User.__table__.columns)
+        if "phone" in available_cols:
+            phone_row = db.session.query(User.phone).filter_by(id=user_id).first()
+            if phone_row:
+                resp["phone"] = phone_row[0]
+        else:
+            resp["phone"] = None
+    except Exception:
+        resp["phone"] = None
+
+    return jsonify(resp)
+
+
+# Edit personal information (partial update). Only updates columns that exist on the users table.
+@app.route("/api/users/<int:user_id>", methods=["PUT"])
+def update_user_profile(user_id):
+    """Update user's personal information (first_name, last_name, email, phone if available).
+    This endpoint is defensive: it only writes columns that exist on the current DB schema.
+    """
+    try:
+        # Check user exists using id-only query
+        user_exists = db.session.query(User.id).filter_by(id=user_id).first()
+        if not user_exists:
+            return jsonify({"error": "User not found"}), 404
+
+        data = request.json or {}
+
+        # Helper to check if a column exists on the users table
+        available_cols = set(c.name for c in User.__table__.columns)
+
+        # Build update dictionary with only available columns
+        update_dict = {}
+
+        # Email: check uniqueness if provided and column exists
+        if "email" in data and "email" in available_cols:
+            new_email = data.get("email")
+            if new_email:
+                existing = (
+                    db.session.query(User.id)
+                    .filter(User.email == new_email, User.id != user_id)
+                    .first()
+                )
+                if existing:
+                    return jsonify({"error": "Email already in use"}), 400
+                update_dict["email"] = new_email
+
+        if (
+            "first_name" in data or "firstName" in data
+        ) and "first_name" in available_cols:
+            update_dict["first_name"] = data.get("first_name") or data.get("firstName")
+
+        if (
+            "last_name" in data or "lastName" in data
+        ) and "last_name" in available_cols:
+            update_dict["last_name"] = data.get("last_name") or data.get("lastName")
+
+        # Phone is optional on some schemas
+        if "phone" in data and "phone" in available_cols:
+            update_dict["phone"] = data.get("phone")
+
+        # Perform update using raw column update (avoids loading full User object)
+        if update_dict:
+            db.session.query(User).filter_by(id=user_id).update(update_dict)
+            db.session.commit()
+
+        # Fetch updated data using selective query
+        user_row = (
+            db.session.query(
+                User.id, User.email, User.first_name, User.last_name, User.created_at
+            )
+            .filter_by(id=user_id)
+            .first()
+        )
+
+        if not user_row:
+            return jsonify({"error": "User not found"}), 404
+
+        resp = {
+            "id": user_row[0],
+            "email": user_row[1],
+            "firstName": user_row[2],
+            "lastName": user_row[3],
+            "joinedDate": user_row[4].isoformat() if user_row[4] else None,
         }
-    )
+
+        # include phone if available in DB
+        if "phone" in available_cols:
+            phone_row = db.session.query(User.phone).filter_by(id=user_id).first()
+            if phone_row:
+                resp["phone"] = phone_row[0]
+
+        return jsonify(resp)
+    except Exception as e:
+        app.logger.exception("Failed to update user profile for user %s", user_id)
+        return (
+            jsonify({"error": "Failed to update profile", "details": str(e)}),
+            500,
+        )
+
+
+# Payment methods API (stored as JSON text in users.payment_methods)
+@app.route("/api/users/<int:user_id>/payment_methods", methods=["GET"])
+def get_payment_methods(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Defensive: payment_methods column may not exist on older schemas
+    try:
+        pm_text = getattr(user, "payment_methods", None)
+        if not pm_text:
+            return jsonify([])
+        methods = json.loads(pm_text)
+        return jsonify(methods)
+    except Exception as e:
+        app.logger.exception("Failed to load payment methods for user %s", user_id)
+        return (
+            jsonify({"error": "Failed to load payment methods", "details": str(e)}),
+            500,
+        )
+
+
+@app.route("/api/users/<int:user_id>/payment_methods", methods=["POST"])
+def add_payment_method(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.json or {}
+
+    try:
+        pm_text = getattr(user, "payment_methods", None) or "[]"
+        methods = json.loads(pm_text)
+
+        # Create a new id (simple incremental)
+        max_id = 0
+        for m in methods:
+            try:
+                max_id = max(max_id, int(m.get("id", 0)))
+            except Exception:
+                continue
+        new_id = max_id + 1
+
+        number = data.get("number") or ""
+        last4 = ""
+        try:
+            digits = "".join([c for c in number if c.isdigit()])
+            last4 = digits[-4:] if len(digits) >= 4 else digits
+        except Exception:
+            last4 = data.get("last4", "")
+
+        pm = {
+            "id": new_id,
+            "type": data.get("type", "Credit Card"),
+            "last4": last4,
+            "name": data.get("name", ""),
+        }
+
+        methods.append(pm)
+        user.payment_methods = json.dumps(methods)
+        db.session.commit()
+
+        return jsonify({"payment_method": pm}), 201
+    except Exception as e:
+        app.logger.exception("Failed to add payment method for user %s", user_id)
+        return (
+            jsonify({"error": "Failed to add payment method", "details": str(e)}),
+            500,
+        )
+
+
+@app.route("/api/users/<int:user_id>/payment_methods/<int:pm_id>", methods=["DELETE"])
+def delete_payment_method(user_id, pm_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        pm_text = getattr(user, "payment_methods", None) or "[]"
+        methods = json.loads(pm_text)
+        remaining = [m for m in methods if int(m.get("id", 0)) != int(pm_id)]
+        if len(remaining) == len(methods):
+            return jsonify({"error": "Payment method not found"}), 404
+        user.payment_methods = json.dumps(remaining)
+        db.session.commit()
+        return jsonify({"message": "Payment method removed"})
+    except Exception as e:
+        app.logger.exception("Failed to delete payment method for user %s", user_id)
+        return (
+            jsonify({"error": "Failed to delete payment method", "details": str(e)}),
+            500,
+        )
 
 
 # Addresses
