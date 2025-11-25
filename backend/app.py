@@ -52,12 +52,49 @@ class User(db.Model):
     last_name = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     orders = db.relationship("Order", backref="user", lazy=True)
+    # Settings fields
+    email_notifications = db.Column(db.Boolean, default=True)
+    two_factor_enabled = db.Column(db.Boolean, default=False)
+    payment_methods = db.Column(db.Text, default="[]")  # JSON list
 
+    # Password helpers
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+# Update user settings
+@app.route("/api/users/<int:user_id>/settings", methods=["PUT"])
+def update_user_settings(user_id):
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    if "email_notifications" in data:
+        user.email_notifications = bool(data["email_notifications"])
+    if "two_factor_enabled" in data:
+        user.two_factor_enabled = bool(data["two_factor_enabled"])
+    if "payment_methods" in data:
+        user.payment_methods = str(data["payment_methods"])
+    db.session.commit()
+    return jsonify({"message": "Settings updated"})
+
+
+# Change password
+@app.route("/api/users/<int:user_id>/password", methods=["PUT"])
+def change_user_password(user_id):
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    current = data.get("current_password")
+    new = data.get("new_password")
+    confirm = data.get("confirm_password")
+    if not user.check_password(current):
+        return jsonify({"error": "Current password is incorrect"}), 400
+    if not new or new != confirm:
+        return jsonify({"error": "New passwords do not match"}), 400
+    user.set_password(new)
+    db.session.commit()
+    return jsonify({"message": "Password updated"})
 
 
 class Category(db.Model):
@@ -400,16 +437,34 @@ def login_user():
 @app.route("/api/users/<int:user_id>", methods=["GET"])
 def get_user_profile(user_id):
     """Get user profile information"""
-    user = User.query.get_or_404(user_id)
+    # Query only the specific columns we need to avoid selecting columns
+    # that may not exist in older database schemas (prevents UndefinedColumn errors).
+    row = (
+        db.session.query(
+            User.id, User.email, User.first_name, User.last_name, User.created_at
+        )
+        .filter_by(id=user_id)
+        .first()
+    )
+    if not row:
+        return jsonify({"error": "User not found"}), 404
+
+    # row may be a sqlalchemy.util.KeyedTuple or similar
+    user_id_val = row[0]
+    email = row[1]
+    first_name = row[2]
+    last_name = row[3]
+    created_at = row[4]
+
     return jsonify(
         {
-            "id": user.id,
-            "email": user.email,
-            "firstName": user.first_name,
-            "lastName": user.last_name,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "joinedDate": user.created_at.isoformat() if user.created_at else None,
+            "id": user_id_val,
+            "email": email,
+            "firstName": first_name,
+            "lastName": last_name,
+            "first_name": first_name,
+            "last_name": last_name,
+            "joinedDate": created_at.isoformat() if created_at else None,
         }
     )
 
@@ -418,12 +473,14 @@ def get_user_profile(user_id):
 @app.route("/api/users/<int:user_id>/addresses", methods=["GET"])
 def get_user_addresses(user_id):
     """Get all addresses for a user"""
-    # Check if user exists
-    User.query.get_or_404(user_id)
+    try:
+        # Check if user exists (select only id to avoid missing-column errors on older DBs)
+        user_exists = db.session.query(User.id).filter_by(id=user_id).first()
+        if not user_exists:
+            return jsonify({"error": "User not found"}), 404
 
-    addresses = Address.query.filter_by(user_id=user_id).all()
-    return jsonify(
-        [
+        addresses = Address.query.filter_by(user_id=user_id).all()
+        result = [
             {
                 "id": a.id,
                 "type": a.type,
@@ -438,14 +495,22 @@ def get_user_addresses(user_id):
             }
             for a in addresses
         ]
-    )
+        return jsonify(result)
+    except Exception as e:
+        app.logger.exception("Failed to fetch addresses for user %s", user_id)
+        return (
+            jsonify({"error": "Failed to fetch addresses", "details": str(e)}),
+            500,
+        )
 
 
 @app.route("/api/users/<int:user_id>/addresses", methods=["POST"])
 def add_address(user_id):
     """Add a new address for user"""
-    # Check if user exists
-    User.query.get_or_404(user_id)
+    # Check if user exists (select id only)
+    user_exists = db.session.query(User.id).filter_by(id=user_id).first()
+    if not user_exists:
+        return jsonify({"error": "User not found"}), 404
 
     data = request.json
 
@@ -475,7 +540,9 @@ def add_address(user_id):
 @app.route("/api/users/<int:user_id>/addresses/<int:address_id>", methods=["PUT"])
 def update_address(user_id, address_id):
     """Update an address"""
-    address = Address.query.filter_by(id=address_id, user_id=user_id).first_or_404()
+    address = Address.query.filter_by(id=address_id, user_id=user_id).first()
+    if not address:
+        return jsonify({"error": "Address not found"}), 404
     data = request.json
 
     # If this is being set as default, unset other defaults
@@ -501,7 +568,9 @@ def update_address(user_id, address_id):
 @app.route("/api/users/<int:user_id>/addresses/<int:address_id>", methods=["DELETE"])
 def delete_address(user_id, address_id):
     """Delete an address"""
-    address = Address.query.filter_by(id=address_id, user_id=user_id).first_or_404()
+    address = Address.query.filter_by(id=address_id, user_id=user_id).first()
+    if not address:
+        return jsonify({"error": "Address not found"}), 404
     db.session.delete(address)
     db.session.commit()
     return jsonify({"message": "Address deleted"})

@@ -109,6 +109,17 @@ export default function UserDashboard({
   onRemoveFromWishlist,
   _onAddToCart
 }: UserDashboardProps) {
+
+
+  // Settings state
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current: '',
+    new: '',
+    confirm: ''
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [user, setUser] = useState(propUser || defaultUser);
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -135,6 +146,21 @@ export default function UserDashboard({
     country: '',
     isDefault: false
   });
+
+  // Payment methods state (declared after activeTab and user are initialized)
+  const [paymentMethods, setPaymentMethods] = useState<Array<{ id: number; type: string; last4: string; name: string }>>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ type: 'Credit Card', name: '', number: '', expiry: '', cvc: '' });
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  // Fetch payment methods when settings tab is active
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetch(`/api/users/${user.id}/payment_methods`)
+        .then(res => res.json())
+        .then(data => setPaymentMethods(data.payment_methods || []));
+    }
+  }, [activeTab, user.id]);
 
   // Update state when props change
   useEffect(() => {
@@ -484,6 +510,8 @@ export default function UserDashboard({
                             setShowEditProfile(false);
                             alert('Profile updated successfully!');
                           } catch (err) {
+                            // Optionally log error
+                            console.error('Settings save error:', err);
                             alert('Failed to update profile.');
                           } finally {
                             setEditProfileLoading(false);
@@ -758,7 +786,6 @@ export default function UserDashboard({
               <div className="space-y-6">
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Settings</h2>
-
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                       <div className="flex items-center gap-3">
@@ -769,11 +796,25 @@ export default function UserDashboard({
                         </div>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" defaultChecked />
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={emailNotifications}
+                          onChange={async e => {
+                            // Removed setSettingsLoading
+                            setEmailNotifications(e.target.checked);
+                            // Call backend API
+                            await fetch(`/api/users/${user.id}/settings`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ email_notifications: e.target.checked })
+                            });
+                            // Removed setSettingsLoading
+                          }}
+                        />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                       </label>
                     </div>
-
                     <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                       <div className="flex items-center gap-3">
                         <Shield className="w-6 h-6 text-gray-600" />
@@ -782,11 +823,23 @@ export default function UserDashboard({
                           <p className="text-sm text-gray-600">Add extra security to your account</p>
                         </div>
                       </div>
-                      <button className="text-green-600 font-semibold hover:text-green-700">
-                        Enable
+                      <button
+                        className={`text-green-600 font-semibold hover:text-green-700 ${twoFactorEnabled ? 'opacity-50' : ''}`}
+                        disabled={twoFactorEnabled}
+                        onClick={async () => {
+                          // Removed setSettingsLoading
+                          setTwoFactorEnabled(true);
+                          await fetch(`/api/users/${user.id}/settings`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ two_factor_enabled: true })
+                          });
+                          // Removed setSettingsLoading
+                        }}
+                      >
+                        {twoFactorEnabled ? 'Enabled' : 'Enable'}
                       </button>
                     </div>
-
                     <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                       <div className="flex items-center gap-3">
                         <CreditCard className="w-6 h-6 text-gray-600" />
@@ -795,33 +848,207 @@ export default function UserDashboard({
                           <p className="text-sm text-gray-600">Manage your saved payment methods</p>
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                      <button
+                        className="text-green-600 font-semibold hover:text-green-700"
+                        onClick={() => setShowPaymentModal(true)}
+                      >
+                        Manage
+                      </button>
                     </div>
+                    {/* Payment Methods Modal */}
+                    {showPaymentModal && (
+                      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-xl shadow-lg max-w-lg w-full">
+                          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                            <h3 className="text-2xl font-bold text-gray-900">Payment Methods</h3>
+                            <button
+                              onClick={() => setShowPaymentModal(false)}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="p-6 space-y-4">
+                            {paymentMethods.length === 0 ? (
+                              <div className="text-center py-6 text-gray-500">No payment methods saved.</div>
+                            ) : (
+                              <div className="space-y-3">
+                                {paymentMethods.map(pm => (
+                                  <div key={pm.id} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+                                    <div>
+                                      <span className="font-semibold">{pm.type}</span> •••• {pm.last4} <span className="text-gray-500 ml-2">({pm.name})</span>
+                                    </div>
+                                    <button
+                                      className="text-red-500 hover:text-red-700 px-2"
+                                      onClick={async () => {
+                                        setPaymentLoading(true);
+                                        await fetch(`/api/users/${user.id}/payment_methods/${pm.id}`, { method: 'DELETE' });
+                                        setPaymentMethods(methods => methods.filter(m => m.id !== pm.id));
+                                        setPaymentLoading(false);
+                                      }}
+                                      disabled={paymentLoading}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <form
+                              className="space-y-3 pt-4 border-t border-gray-200"
+                              onSubmit={async e => {
+                                e.preventDefault();
+                                setPaymentLoading(true);
+                                const res = await fetch(`/api/users/${user.id}/payment_methods`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(paymentForm)
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                  setPaymentMethods(methods => [...methods, data.payment_method]);
+                                  setPaymentForm({ type: 'Credit Card', name: '', number: '', expiry: '', cvc: '' });
+                                  alert('Payment method added!');
+                                } else {
+                                  alert(data.error || 'Failed to add payment method.');
+                                }
+                                setPaymentLoading(false);
+                              }}
+                            >
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                <select
+                                  value={paymentForm.type}
+                                  onChange={e => setPaymentForm(f => ({ ...f, type: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                  required
+                                >
+                                  <option>Credit Card</option>
+                                  <option>Debit Card</option>
+                                  <option>PayPal</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Name on Card</label>
+                                <input
+                                  type="text"
+                                  value={paymentForm.name}
+                                  onChange={e => setPaymentForm(f => ({ ...f, name: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
+                                <input
+                                  type="text"
+                                  value={paymentForm.number}
+                                  onChange={e => setPaymentForm(f => ({ ...f, number: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                  required
+                                  maxLength={19}
+                                  pattern="[0-9 ]{12,19}"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Expiry</label>
+                                  <input
+                                    type="text"
+                                    value={paymentForm.expiry}
+                                    onChange={e => setPaymentForm(f => ({ ...f, expiry: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                    required
+                                    placeholder="MM/YY"
+                                    maxLength={5}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">CVC</label>
+                                  <input
+                                    type="text"
+                                    value={paymentForm.cvc}
+                                    onChange={e => setPaymentForm(f => ({ ...f, cvc: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                    required
+                                    maxLength={4}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                type="submit"
+                                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-semibold"
+                                disabled={paymentLoading}
+                              >
+                                {paymentLoading ? 'Adding...' : 'Add Payment Method'}
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-
                 <div className="bg-white rounded-xl shadow-md p-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-4">Change Password</h3>
-                  <div className="space-y-4">
+                  <form
+                    className="space-y-4"
+                    onSubmit={async e => {
+                      e.preventDefault();
+                      setPasswordLoading(true);
+                      const res = await fetch(`/api/users/${user.id}/password`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          current_password: passwordForm.current,
+                          new_password: passwordForm.new,
+                          confirm_password: passwordForm.confirm
+                        })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        alert('Password updated successfully!');
+                        setPasswordForm({ current: '', new: '', confirm: '' });
+                      } else {
+                        alert(data.error || 'Failed to update password.');
+                      }
+                      setPasswordLoading(false);
+                    }}
+                  >
                     <input
                       type="password"
                       placeholder="Current Password"
+                      value={passwordForm.current}
+                      onChange={e => setPasswordForm(f => ({ ...f, current: e.target.value }))}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      required
                     />
                     <input
                       type="password"
                       placeholder="New Password"
+                      value={passwordForm.new}
+                      onChange={e => setPasswordForm(f => ({ ...f, new: e.target.value }))}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      required
                     />
                     <input
                       type="password"
                       placeholder="Confirm New Password"
+                      value={passwordForm.confirm}
+                      onChange={e => setPasswordForm(f => ({ ...f, confirm: e.target.value }))}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      required
                     />
-                    <button className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-semibold">
-                      Update Password
+                    <button
+                      type="submit"
+                      className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-semibold"
+                      disabled={passwordLoading}
+                    >
+                      {passwordLoading ? 'Updating...' : 'Update Password'}
                     </button>
-                  </div>
+                  </form>
                 </div>
               </div>
             )}
